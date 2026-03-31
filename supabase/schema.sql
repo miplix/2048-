@@ -86,6 +86,7 @@ CREATE POLICY "archive_select" ON tournament_archive FOR SELECT USING (true);
 -- Миграция: добавить колонки lives если их нет (для существующих БД)
 ALTER TABLE players ADD COLUMN IF NOT EXISTS lives INTEGER NOT NULL DEFAULT 5;
 ALTER TABLE players ADD COLUMN IF NOT EXISTS lives_reset_date TEXT NOT NULL DEFAULT '';
+ALTER TABLE players ADD COLUMN IF NOT EXISTS lives_bought INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE players ADD COLUMN IF NOT EXISTS game_state JSONB;
 
 -- 5. Таблица покупок (защита от двойного начисления)

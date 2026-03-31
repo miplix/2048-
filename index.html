@@ -771,11 +771,12 @@ class DB {
     const{data:cr,error}=await this._client.from('players').insert({nickname:accountId}).select().single();
     if(error)throw error;return cr;
   }
-  async savePlayer(id,{coins,bestScore,maxTile,upgrades,achievements,lives,livesResetDate,gameState}){
+  async savePlayer(id,{coins,bestScore,maxTile,upgrades,achievements,lives,livesResetDate,livesBought,gameState}){
     await this._wait();
     const upd={coins,best_score:bestScore,max_tile:maxTile,upgrades,achievements,last_seen_at:new Date().toISOString()};
     if(typeof lives==='number')upd.lives=lives;
     if(livesResetDate!==undefined)upd.lives_reset_date=livesResetDate;
+    if(typeof livesBought==='number')upd.lives_bought=livesBought;
     if(gameState!==undefined)upd.game_state=gameState;
     await this._client.from('players').update(upd).eq('id',id);
   }
@@ -849,7 +850,8 @@ function lsKey(key,accountId){return accountId?key+'__'+accountId:key}
 
 const LivesSystem={
   _accountId:null,
-  init(accountId){this._accountId=accountId},
+  _dbLoaded:false, // флаг: данные загружены из БД, не трогать checkReset
+  init(accountId){this._accountId=accountId;this._dbLoaded=false},
   _get(){
     const d=JSON.parse(localStorage.getItem(lsKey('lives',this._accountId))||'null');
     if(!d)return{count:LIVES_MAX,bought:0,lastReset:this._todayKey()};
@@ -871,15 +873,13 @@ const LivesSystem={
     return tbMidnight.getTime()-LIVES_TZ_OFFSET*3600000;
   },
   checkReset(){
+    // Если данные только что загружены из БД — не трогаем
+    if(this._dbLoaded)return false;
     const d=this._get();
     const today=this._todayKey();
     if(d.lastReset!==today){
-      // Сбрасываем только бесплатные жизни (до LIVES_MAX), купленные не трогаем
       const bought=d.bought||0;
-      const freeAfterReset=LIVES_MAX;
-      // Итого = max(текущие, бесплатные) + купленные сверх
-      const newCount=Math.max(freeAfterReset+bought, d.count);
-      d.count=newCount;
+      d.count=LIVES_MAX+bought;
       d.lastReset=today;
       this._save(d);
       return true;
@@ -890,32 +890,34 @@ const LivesSystem={
   spend(){
     const d=this._get();
     if(d.count<=0)return false;
-    // Если тратим купленную жизнь — уменьшаем bought
     if(d.bought>0&&d.count>LIVES_MAX)d.bought--;
     d.count--;
     this._save(d);
     return true;
   },
-  // Добавить купленные жизни (не сбрасываются при обновлении дня)
   addBought(n){
     const d=this._get();
     d.count+=n;
     d.bought=(d.bought||0)+n;
     this._save(d);
   },
-  loadFromDB(lives,livesResetDate){
-    const d=this._get();
+  // БД — единственный источник истины для жизней
+  // Просто записываем данные из БД как есть, без локальной логики
+  loadFromDB(lives,livesResetDate,bought){
     const today=this._todayKey();
-    const dbCount=typeof lives==='number'?lives:LIVES_MAX;
     const dbDate=livesResetDate||'';
-    if(dbDate===today){
-      d.count=Math.max(d.count,dbCount);
-    } else {
-      const bought=d.bought||0;
-      d.count=LIVES_MAX+bought;
+    let count=typeof lives==='number'?lives:LIVES_MAX;
+    let boughtCount=typeof bought==='number'?bought:0;
+
+    // Если в БД дата другая (новый день) — восстанавливаем бесплатные жизни
+    // но купленные сохраняем
+    if(dbDate!==today){
+      count=LIVES_MAX+boughtCount;
     }
-    d.lastReset=today;
+
+    const d={count,bought:boughtCount,lastReset:today};
     this._save(d);
+    this._dbLoaded=true; // помечаем что данные из БД, checkReset не трогает
   },
   formatCountdown(){
     const ms=this.nextResetMs()-Date.now();
@@ -1039,8 +1041,8 @@ function applyPlayerData(player,accountId){
     localStorage.setItem(k('gameState'),JSON.stringify(player.game_state));
   }
 
-  // Жизни — загружаем из БД
-  LivesSystem.loadFromDB(player.lives,player.lives_reset_date);
+  // Жизни — загружаем из БД (передаём bought из БД)
+  LivesSystem.loadFromDB(player.lives, player.lives_reset_date, player.lives_bought||0);
 }
 
 // =============================================
@@ -1131,6 +1133,7 @@ async function init(){
       achievements:JSON.parse(localStorage.getItem(k('achievements'))||'{}'),
       lives:livesData.count,
       livesResetDate:livesData.lastReset||'',
+      livesBought:livesData.bought||0,
       gameState:gs,
     });
   };
@@ -1165,7 +1168,6 @@ async function init(){
   });
 
   board.on('gameOver',async(state)=>{
-    // При game over очищаем сохранённое состояние поля
     localStorage.removeItem(k('gameState'));
     if(playerId){
       const maxTile=Math.max(...state.grid.flat());
@@ -1175,6 +1177,7 @@ async function init(){
         upgrades:JSON.parse(localStorage.getItem(k('upgrades'))||'{}'),
         achievements:JSON.parse(localStorage.getItem(k('achievements'))||'{}'),
         lives:livesData.count,livesResetDate:livesData.lastReset||'',
+        livesBought:livesData.bought||0,
         gameState:null,
       });
       db.submitScore(playerId,playerNickname,state.score,maxTile);

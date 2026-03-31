@@ -917,8 +917,24 @@ async function init(){
     });
   };
 
+  // Синхронизация при покупке апгрейда
   const origSave=upgrades._save.bind(upgrades);
   upgrades._save=()=>{origSave();syncToDB()};
+
+  // Синхронизация при изменении монет (покупка, награда за слияние)
+  currency.onChange(()=>syncToDB());
+
+  // Синхронизация при получении достижения
+  achievements.onChange(()=>syncToDB());
+
+  // Синхронизация при трате жизни
+  const origSpend=LivesSystem.spend.bind(LivesSystem);
+  LivesSystem.spend=()=>{const r=origSpend();if(r)syncToDB();return r};
+
+  // Синхронизация при новом рекорде (каждый ход)
+  board.on('move',(state)=>{
+    if(state.score>0&&state.score===state.bestScore)syncToDB();
+  });
 
   board.on('gameOver',async(state)=>{
     if(playerId){
@@ -934,7 +950,11 @@ async function init(){
     }
   });
 
-  setInterval(syncToDB,30000);
+  // Резервная синхронизация каждые 15 сек
+  setInterval(syncToDB,15000);
+
+  // Синхронизация при закрытии/уходе со страницы
+  window.addEventListener('beforeunload',()=>syncToDB());
 
   // Кнопка выхода в шапке
   if(accountId){

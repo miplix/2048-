@@ -123,7 +123,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 <body>
 <div id="app"></div>
 <div id="toast-container"></div>
-<script>
+<script type="module">
 
 // =============================================
 // UpgradeSystem
@@ -629,66 +629,122 @@ class DB {
 const db=new DB();
 
 // =============================================
-// NEAR Wallet Login (MyNearWallet redirect flow)
-// Работает в любом браузере без SDK.
-// HOT Wallet тоже поддерживает этот стандарт.
+// Lives System (5 жизней, сброс в 00:00 Тбилиси = UTC+4)
 // =============================================
+const LIVES_MAX=5;
+const LIVES_TZ_OFFSET=4; // Тбилиси UTC+4
 
-// Адрес кошелька для редиректа (mainnet)
-const WALLET_URL='https://app.mynearwallet.com';
-
-function getNearLoginUrl(){
-  // После входа кошелёк редиректит обратно с ?account_id=xxx&public_key=yyy
-  const successUrl=window.location.href.split('?')[0]+'?near_login=1';
-  const failureUrl=window.location.href.split('?')[0]+'?near_login=0';
-  return `${WALLET_URL}/login/?success_url=${encodeURIComponent(successUrl)}&failure_url=${encodeURIComponent(failureUrl)}`;
-}
-
-// Проверяем, вернулись ли мы после логина
-function checkNearCallback(){
-  const params=new URLSearchParams(window.location.search);
-  if(params.get('near_login')==='1'){
-    const accountId=params.get('account_id');
-    // Чистим URL
-    window.history.replaceState({},'',window.location.pathname);
-    return accountId||null;
+const LivesSystem={
+  _get(){
+    const d=JSON.parse(localStorage.getItem('lives')||'null');
+    if(!d)return{count:LIVES_MAX,lastReset:this._todayKey()};
+    return d;
+  },
+  _save(d){localStorage.setItem('lives',JSON.stringify(d))},
+  // Ключ текущего дня по Тбилиси (YYYY-MM-DD)
+  _todayKey(){
+    const now=new Date();
+    const tbNow=new Date(now.getTime()+LIVES_TZ_OFFSET*3600000);
+    return tbNow.toISOString().slice(0,10);
+  },
+  // Следующий сброс: 00:00 Тбилиси следующего дня (в мс UTC)
+  nextResetMs(){
+    const now=new Date();
+    const tbNow=new Date(now.getTime()+LIVES_TZ_OFFSET*3600000);
+    const tbMidnight=new Date(tbNow);
+    tbMidnight.setUTCHours(0,0,0,0);
+    tbMidnight.setUTCDate(tbMidnight.getUTCDate()+1);
+    return tbMidnight.getTime()-LIVES_TZ_OFFSET*3600000; // обратно в UTC
+  },
+  // Проверяем и применяем суточный сброс
+  checkReset(){
+    const d=this._get();
+    const today=this._todayKey();
+    if(d.lastReset!==today&&d.count<LIVES_MAX){
+      d.count=LIVES_MAX;
+      d.lastReset=today;
+      this._save(d);
+      return true;
+    }
+    return false;
+  },
+  getCount(){this.checkReset();return this._get().count},
+  spend(){
+    const d=this._get();
+    if(d.count<=0)return false;
+    d.count--;
+    this._save(d);
+    return true;
+  },
+  // Форматируем обратный отсчёт
+  formatCountdown(){
+    const ms=this.nextResetMs()-Date.now();
+    if(ms<=0)return'00:00:00';
+    const h=Math.floor(ms/3600000);
+    const m=Math.floor((ms%3600000)/60000);
+    const s=Math.floor((ms%60000)/1000);
+    return`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
   }
-  if(params.get('near_login')==='0'){
-    window.history.replaceState({},'',window.location.pathname);
-    return false; // явный отказ
-  }
-  return undefined; // не было редиректа
-}
+};
 
+// =============================================
+// NEAR Wallet Login (HOT Connector via esm.sh)
+// =============================================
 function showWalletScreen(){
-  return new Promise((resolve)=>{
+  return new Promise(async(resolve)=>{
     const overlay=document.createElement('div');
     overlay.id='wallet-overlay';
     overlay.style.cssText='position:fixed;inset:0;background:#1a1a2e;display:flex;align-items:center;justify-content:center;z-index:9999;flex-direction:column;gap:20px;padding:24px';
     overlay.innerHTML=`
       <div style="font-size:2.8rem;font-weight:900;color:#fff;letter-spacing:-1px">2048<span style="color:#e94560">+</span></div>
-      <div style="color:#aaa;font-size:0.95rem;text-align:center;max-width:280px;line-height:1.5">Подключи NEAR кошелёк для сохранения прогресса и участия в турнирах</div>
-      <button id="btn-connect-wallet" style="background:#e94560;color:#fff;border:none;border-radius:10px;padding:14px 32px;font-size:1rem;font-weight:700;cursor:pointer;width:100%;max-width:300px;display:flex;align-items:center;justify-content:center;gap:8px">
-        <span style="font-size:1.2rem">🔗</span> Войти через NEAR кошелёк
+      <div style="color:#aaa;font-size:0.95rem;text-align:center;max-width:280px;line-height:1.5">Подключи HOT / NEAR кошелёк для сохранения прогресса и участия в турнирах</div>
+      <button id="btn-connect-wallet" style="background:#e94560;color:#fff;border:none;border-radius:10px;padding:14px 32px;font-size:1rem;font-weight:700;cursor:pointer;width:100%;max-width:300px">
+        🔗 Подключить кошелёк
       </button>
-      <div style="color:#666;font-size:0.78rem;text-align:center;max-width:260px">MyNearWallet · HOT Wallet · Meteor · и другие</div>
+      <div style="color:#555;font-size:0.75rem;text-align:center">HOT Wallet · Meteor · MyNearWallet · и другие</div>
       <button id="btn-skip-wallet" style="background:transparent;color:#555;border:1px solid #333;border-radius:10px;padding:10px 24px;font-size:0.85rem;cursor:pointer;width:100%;max-width:300px">
         Играть без входа
-      </button>`;
+      </button>
+      <div id="wallet-status" style="color:#888;font-size:0.8rem;min-height:20px;text-align:center"></div>`;
     document.body.appendChild(overlay);
+    const statusEl=document.getElementById('wallet-status');
 
-    document.getElementById('btn-connect-wallet').addEventListener('click',()=>{
-      // Сохраняем флаг что инициировали вход (для file:// — предупреждение)
-      if(window.location.protocol==='file:'){
-        alert('Для входа через кошелёк нужно открыть игру через веб-сервер (Vercel, localhost и т.д.).\n\nПри открытии через file:// редирект не работает.');
-        return;
-      }
-      window.location.href=getNearLoginUrl();
+    // Загружаем NearConnector через esm.sh (работает в браузере без сборщика)
+    statusEl.textContent='Загрузка...';
+    let NearConnector=null;
+    try{
+      const mod=await import('https://esm.sh/@hot-labs/near-connect');
+      NearConnector=mod.NearConnector;
+    }catch(e){
+      statusEl.textContent='Ошибка загрузки SDK';
+      console.error('near-connect load error',e);
+    }
+    statusEl.textContent='';
+
+    let connector=null;
+    if(NearConnector){
+      try{connector=new NearConnector({footerBranding:null})}
+      catch(e){console.error('NearConnector init error',e)}
+    }
+
+    document.getElementById('btn-connect-wallet').addEventListener('click',async()=>{
+      if(!connector){statusEl.textContent='SDK не загружен. Попробуй обновить страницу.';return}
+      statusEl.textContent='Открываем выбор кошелька...';
+      try{await connector.connect()}
+      catch(e){statusEl.textContent='Отменено.'}
     });
 
     document.getElementById('btn-skip-wallet').addEventListener('click',()=>{
       overlay.remove();resolve(null);
     });
+
+    if(connector){
+      connector.on('wallet:signIn',async(t)=>{
+        const accountId=t.accounts[0].accountId;
+        statusEl.textContent=`✓ ${accountId}`;
+        setTimeout(()=>{overlay.remove();resolve(accountId)},600);
+      });
+    }
   });
 }
 
@@ -710,20 +766,55 @@ function applyPlayerData(player){
 }
 
 // =============================================
+// Lives UI
+// =============================================
+function renderLivesUI(){
+  // Удаляем старый блок если есть
+  const old=document.getElementById('lives-bar');
+  if(old)old.remove();
+
+  const count=LivesSystem.getCount();
+  const bar=document.createElement('div');
+  bar.id='lives-bar';
+  bar.style.cssText='display:flex;align-items:center;justify-content:center;gap:6px;padding:6px 0 2px';
+
+  if(count>0){
+    let html='';
+    for(let i=0;i<LIVES_MAX;i++){
+      html+=`<span style="font-size:1.3rem;opacity:${i<count?'1':'0.2'}">${i<count?'❤️':'🖤'}</span>`;
+    }
+    bar.innerHTML=html;
+  } else {
+    bar.innerHTML=`<span style="color:#e94560;font-size:0.85rem;font-weight:700">❤️ Жизни закончились — следующий сброс через <span id="lives-countdown"></span></span>`;
+    // Запускаем обратный отсчёт
+    const tick=()=>{
+      const el=document.getElementById('lives-countdown');
+      if(el)el.textContent=LivesSystem.formatCountdown();
+    };
+    tick();
+    const timer=setInterval(()=>{
+      // Проверяем сброс
+      if(LivesSystem.checkReset()){
+        clearInterval(timer);
+        renderLivesUI();
+        return;
+      }
+      tick();
+    },1000);
+  }
+
+  // Вставляем после шапки (перед метриками)
+  const app=document.getElementById('app');
+  const header=app.querySelector('.header');
+  if(header&&header.nextSibling)app.insertBefore(bar,header.nextSibling);
+  else app.prepend(bar);
+}
+
+// =============================================
 // Init
 // =============================================
 async function init(){
   let accountId=localStorage.getItem('nearAccountId');
-
-  // Проверяем редирект от кошелька
-  const callbackResult=checkNearCallback();
-  if(callbackResult===false){
-    // Пользователь отказался — ничего не делаем, идём дальше без аккаунта
-  } else if(callbackResult){
-    // Успешный вход
-    accountId=callbackResult;
-    localStorage.setItem('nearAccountId',accountId);
-  }
 
   if(!accountId){
     const result=await showWalletScreen();
@@ -752,6 +843,32 @@ async function init(){
   const board=new GameBoard(upgrades.getGridSize(),spawn,currency,upgrades,achievements);
   const ui=new UI(board,currency,upgrades,achievements);
 
+  // Отрисовываем жизни
+  renderLivesUI();
+
+  // Тратим жизнь при старте новой игры
+  const origReset=board.reset.bind(board);
+  board.reset=()=>{
+    if(LivesSystem.getCount()<=0){ui.toast('❤️ Нет жизней! Жди сброса.');return}
+    LivesSystem.spend();
+    renderLivesUI();
+    origReset();
+  };
+
+  // Тратим жизнь при первом ходе (начало игры при init)
+  // Первая партия уже началась — тратим жизнь сразу
+  if(LivesSystem.getCount()>0){
+    LivesSystem.spend();
+    renderLivesUI();
+  }
+
+  // Блокируем ходы если жизней нет
+  const origMove=board.move.bind(board);
+  board.move=(dir)=>{
+    // Если игра уже идёт (есть плитки) — ходы разрешены без траты жизни
+    return origMove(dir);
+  };
+
   if(currency.checkDailyBonus())ui.toast('🎁 Ежедневный бонус: +50 монет!');
   if(accountId)ui.toast(`👋 ${accountId}`);
 
@@ -770,10 +887,11 @@ async function init(){
   upgrades._save=()=>{origSave();syncToDB()};
 
   board.on('gameOver',async(state)=>{
-    if(!playerId)return;
-    const maxTile=Math.max(...state.grid.flat());
-    db.savePlayer(playerId,{coins:currency.coins,bestScore:state.bestScore,maxTile,upgrades:JSON.parse(localStorage.getItem('upgrades')||'{}'),achievements:JSON.parse(localStorage.getItem('achievements')||'{}')});
-    db.submitScore(playerId,playerNickname,state.score,maxTile);
+    if(playerId){
+      const maxTile=Math.max(...state.grid.flat());
+      db.savePlayer(playerId,{coins:currency.coins,bestScore:state.bestScore,maxTile,upgrades:JSON.parse(localStorage.getItem('upgrades')||'{}'),achievements:JSON.parse(localStorage.getItem('achievements')||'{}')});
+      db.submitScore(playerId,playerNickname,state.score,maxTile);
+    }
   });
 
   setInterval(syncToDB,30000);

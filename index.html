@@ -230,11 +230,13 @@ class GameBoard {
   }
   on(e,fn){if(this._listeners[e])this._listeners[e].push(fn)}
   _emit(e,d){(this._listeners[e]||[]).forEach(fn=>fn(d))}
+  _moveCount=0; // счётчик ходов для сохранения каждые 5
   _init(){
     // Пробуем восстановить сохранённое состояние
     const saved=this._loadGameState();
-    if(saved&&saved.grid&&saved.grid.length===this.size){
-      this.grid=saved.grid;
+    // Восстанавливаем если размер поля совпадает (учитываем расширения)
+    if(saved&&saved.grid&&saved.grid.length===this.size&&saved.grid[0]?.length===this.size){
+      this.grid=saved.grid.map(r=>r.map(v=>v||0));
       this.score=saved.score||0;
       this.goal=saved.goal||2048;
     } else {
@@ -242,21 +244,23 @@ class GameBoard {
       this.score=0;this.goal=2048;
       this._spawnTile();this._spawnTile();
     }
-    this.mergeCount=0;this.autoDeleteCharge=false;
+    this._moveCount=0;this.mergeCount=0;this.autoDeleteCharge=false;
     this._prevGrid=null;this._prevScore=0;
   }
   _loadGameState(){
     try{return JSON.parse(localStorage.getItem(this._k('gameState'))||'null')}catch(e){return null}
   }
   _saveGameState(){
-    localStorage.setItem(this._k('gameState'),JSON.stringify({grid:this.grid,score:this.score,goal:this.goal}));
+    // Сохраняем размер поля вместе с состоянием
+    localStorage.setItem(this._k('gameState'),JSON.stringify({
+      grid:this.grid,score:this.score,goal:this.goal,size:this.size
+    }));
   }
   reset(){
-    // При сбросе очищаем сохранённое состояние
     localStorage.removeItem(this._k('gameState'));
     this.grid=Array.from({length:this.size},()=>Array(this.size).fill(0));
     this.score=0;this.goal=2048;this.mergeCount=0;this.autoDeleteCharge=false;
-    this._prevGrid=null;this._prevScore=0;
+    this._moveCount=0;this._prevGrid=null;this._prevScore=0;
     this._spawnTile();this._spawnTile();
     this._emit('move',this._state());
   }
@@ -281,7 +285,9 @@ class GameBoard {
     const maxTile=Math.max(...this.grid.flat());
     if(maxTile>=this.goal){if(this.goal===2048&&!this.upgrades.isSpawnUnlocked())this.upgrades.unlockSpawn();this.goal*=2;this._emit('win',this.goal/2)}
     this._spawnTile();this._emit('move',this._state());
-    this._saveGameState();
+    // Сохраняем состояние каждые 5 ходов
+    this._moveCount++;
+    if(this._moveCount%5===0)this._saveGameState();
     if(this._isGameOver())this._emit('gameOver',this._state());
     return true;
   }
@@ -308,8 +314,8 @@ class GameBoard {
     for(let r=0;r<this.size;r++)for(let c=0;c<this.size;c++){const v=this.grid[r][c];if(c+1<this.size&&this.grid[r][c+1]===v)return false;if(r+1<this.size&&this.grid[r+1][c]===v)return false}
     return true;
   }
-  deleteTile(r,c){if(this.grid[r][c]===0)return false;this.grid[r][c]=0;this._emit('move',this._state());return true}
-  useAutoDelete(r,c){if(!this.autoDeleteCharge||this.grid[r][c]===0)return false;this.grid[r][c]=0;this.autoDeleteCharge=false;this._emit('autoCharge',false);this._emit('move',this._state());return true}
+  deleteTile(r,c){if(this.grid[r][c]===0)return false;this.grid[r][c]=0;this._saveGameState();this._emit('move',this._state());return true}
+  useAutoDelete(r,c){if(!this.autoDeleteCharge||this.grid[r][c]===0)return false;this.grid[r][c]=0;this.autoDeleteCharge=false;this._saveGameState();this._emit('autoCharge',false);this._emit('move',this._state());return true}
   useSecondHeart(){if(!this.upgrades.hasSecondHeart()||this.secondHeartUsed)return false;this.secondHeartUsed=true;return true}
   getState(){return this._state()}
 }

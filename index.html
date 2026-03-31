@@ -231,12 +231,35 @@ class GameBoard {
   on(e,fn){if(this._listeners[e])this._listeners[e].push(fn)}
   _emit(e,d){(this._listeners[e]||[]).forEach(fn=>fn(d))}
   _init(){
+    // Пробуем восстановить сохранённое состояние
+    const saved=this._loadGameState();
+    if(saved&&saved.grid&&saved.grid.length===this.size){
+      this.grid=saved.grid;
+      this.score=saved.score||0;
+      this.goal=saved.goal||2048;
+    } else {
+      this.grid=Array.from({length:this.size},()=>Array(this.size).fill(0));
+      this.score=0;this.goal=2048;
+      this._spawnTile();this._spawnTile();
+    }
+    this.mergeCount=0;this.autoDeleteCharge=false;
+    this._prevGrid=null;this._prevScore=0;
+  }
+  _loadGameState(){
+    try{return JSON.parse(localStorage.getItem(this._k('gameState'))||'null')}catch(e){return null}
+  }
+  _saveGameState(){
+    localStorage.setItem(this._k('gameState'),JSON.stringify({grid:this.grid,score:this.score,goal:this.goal}));
+  }
+  reset(){
+    // При сбросе очищаем сохранённое состояние
+    localStorage.removeItem(this._k('gameState'));
     this.grid=Array.from({length:this.size},()=>Array(this.size).fill(0));
     this.score=0;this.goal=2048;this.mergeCount=0;this.autoDeleteCharge=false;
     this._prevGrid=null;this._prevScore=0;
     this._spawnTile();this._spawnTile();
+    this._emit('move',this._state());
   }
-  reset(){this._init();this._emit('move',this._state())}
   _state(){return{grid:this.grid.map(r=>[...r]),score:this.score,bestScore:this.bestScore,goal:this.goal,size:this.size,autoDeleteCharge:this.autoDeleteCharge}}
   _emptyCell(){const c=[];for(let r=0;r<this.size;r++)for(let cc=0;cc<this.size;cc++)if(this.grid[r][cc]===0)c.push([r,cc]);return c}
   _spawnTile(){const e=this._emptyCell();if(!e.length)return;const[r,c]=e[Math.floor(Math.random()*e.length)];this.grid[r][c]=this.spawnSystem.getSpawnValue()}
@@ -258,6 +281,7 @@ class GameBoard {
     const maxTile=Math.max(...this.grid.flat());
     if(maxTile>=this.goal){if(this.goal===2048&&!this.upgrades.isSpawnUnlocked())this.upgrades.unlockSpawn();this.goal*=2;this._emit('win',this.goal/2)}
     this._spawnTile();this._emit('move',this._state());
+    this._saveGameState();
     if(this._isGameOver())this._emit('gameOver',this._state());
     return true;
   }
@@ -741,15 +765,13 @@ class DB {
     const{data:cr,error}=await this._client.from('players').insert({nickname:accountId}).select().single();
     if(error)throw error;return cr;
   }
-  async savePlayer(id,{coins,bestScore,maxTile,upgrades,achievements,lives,livesResetDate}){
+  async savePlayer(id,{coins,bestScore,maxTile,upgrades,achievements,lives,livesResetDate,gameState}){
     await this._wait();
-    await this._client.from('players').update({
-      coins,best_score:bestScore,max_tile:maxTile,
-      upgrades,achievements,
-      lives:lives||0,
-      lives_reset_date:livesResetDate||'',
-      last_seen_at:new Date().toISOString()
-    }).eq('id',id);
+    const upd={coins,best_score:bestScore,max_tile:maxTile,upgrades,achievements,last_seen_at:new Date().toISOString()};
+    if(typeof lives==='number')upd.lives=lives;
+    if(livesResetDate!==undefined)upd.lives_reset_date=livesResetDate;
+    if(gameState!==undefined)upd.game_state=gameState;
+    await this._client.from('players').update(upd).eq('id',id);
   }
   async submitScore(playerId,nickname,score,maxTile){
     await this._wait();
@@ -989,19 +1011,15 @@ function showWalletScreen(){
 function applyPlayerData(player,accountId){
   const k=(key)=>lsKey(key,accountId);
 
-  // Монеты: берём максимум
   const localCoins=parseInt(localStorage.getItem(k('coins'))||'0');
   if((player.coins||0)>localCoins)localStorage.setItem(k('coins'),player.coins);
 
-  // Рекорд
   const localBest=parseInt(localStorage.getItem(k('bestScore'))||'0');
   if((player.best_score||0)>localBest)localStorage.setItem(k('bestScore'),player.best_score);
 
-  // Апгрейды — БД источник истины
   if(player.upgrades&&Object.keys(player.upgrades).length>0)
     localStorage.setItem(k('upgrades'),JSON.stringify(player.upgrades));
 
-  // Достижения — мёрджим
   if(player.achievements&&Object.keys(player.achievements).length>0){
     const localAch=JSON.parse(localStorage.getItem(k('achievements'))||'{}');
     const merged={...localAch,...player.achievements};
@@ -1010,14 +1028,13 @@ function applyPlayerData(player,accountId){
     localStorage.setItem(k('achievements'),JSON.stringify(merged));
   }
 
+  // Состояние поля — восстанавливаем из БД
+  if(player.game_state&&player.game_state.grid){
+    localStorage.setItem(k('gameState'),JSON.stringify(player.game_state));
+  }
+
   // Жизни — загружаем из БД
   LivesSystem.loadFromDB(player.lives,player.lives_reset_date);
-
-  // ВРЕМЕННО: принудительный сброс до 5 для тестирования
-  // TODO: убрать после завершения тестов
-  const livesData=LivesSystem._get();
-  livesData.count=5;livesData.bought=0;livesData.lastReset=LivesSystem._todayKey();
-  LivesSystem._save(livesData);
 }
 
 // =============================================
@@ -1099,6 +1116,7 @@ async function init(){
   const syncToDB=()=>{
     if(!playerId)return;
     const livesData=LivesSystem._get();
+    const gs=JSON.parse(localStorage.getItem(k('gameState'))||'null');
     db.savePlayer(playerId,{
       coins:currency.coins,
       bestScore:parseInt(localStorage.getItem(k('bestScore'))||'0'),
@@ -1107,6 +1125,7 @@ async function init(){
       achievements:JSON.parse(localStorage.getItem(k('achievements'))||'{}'),
       lives:livesData.count,
       livesResetDate:livesData.lastReset||'',
+      gameState:gs,
     });
   };
 
@@ -1140,6 +1159,8 @@ async function init(){
   });
 
   board.on('gameOver',async(state)=>{
+    // При game over очищаем сохранённое состояние поля
+    localStorage.removeItem(k('gameState'));
     if(playerId){
       const maxTile=Math.max(...state.grid.flat());
       const livesData=LivesSystem._get();
@@ -1148,6 +1169,7 @@ async function init(){
         upgrades:JSON.parse(localStorage.getItem(k('upgrades'))||'{}'),
         achievements:JSON.parse(localStorage.getItem(k('achievements'))||'{}'),
         lives:livesData.count,livesResetDate:livesData.lastReset||'',
+        gameState:null,
       });
       db.submitScore(playerId,playerNickname,state.score,maxTile);
     }

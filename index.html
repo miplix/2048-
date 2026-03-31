@@ -534,17 +534,33 @@ class UI {
     try{
       const wallet=await window._nearConnector.wallet();
       const amount=(BigInt(priceHuman)*BigInt('1'+'0'.repeat(18))).toString();
+
+      // Сначала регистрируем получателя (storage_deposit) если нужно,
+      // затем делаем ft_transfer в одной транзакции
       const result=await wallet.signAndSendTransaction({
         receiverId:DARAI_TOKEN,
-        actions:[{
-          type:'FunctionCall',
-          params:{
-            methodName:'ft_transfer',
-            args:{receiver_id:'2048game.near',amount,memo:`buy_lives_${lives}`},
-            gas:'30000000000000',
-            deposit:'1'
+        actions:[
+          // storage_deposit для 2048game.near (0.00125 NEAR = 1250000000000000000000000 yocto)
+          // Если уже зарегистрирован — лишние средства вернутся
+          {
+            type:'FunctionCall',
+            params:{
+              methodName:'storage_deposit',
+              args:{account_id:'2048game.near',registration_only:true},
+              gas:'10000000000000',
+              deposit:'1250000000000000000000'
+            }
+          },
+          {
+            type:'FunctionCall',
+            params:{
+              methodName:'ft_transfer',
+              args:{receiver_id:'2048game.near',amount,memo:`buy_lives_${lives}`},
+              gas:'20000000000000',
+              deposit:'1'
+            }
           }
-        }]
+        ]
       });
       txHash=result?.transaction?.hash||result?.transaction_outcome?.id||null;
       if(!txHash){statusEl.textContent='Транзакция отправлена, но хэш не получен. Обратись в поддержку.';return}
@@ -858,7 +874,8 @@ const LivesSystem={
 // NEAR Wallet Login (HOT Connector — near-connect.bundle.js)
 // =============================================
 
-// Коннектор создаётся один раз глобально — важно для корректной работы модала
+// Коннектор создаётся СРАЗУ при загрузке — не лениво
+// Это ускоряет открытие модала и восстанавливает сессию
 let _connector=null;
 function getConnector(){
   if(_connector)return _connector;
@@ -878,15 +895,20 @@ function getConnector(){
         }
       }
     });
+    // Сохраняем глобально сразу
+    window._nearConnector=_connector;
   }catch(e){console.error('NearConnector init error',e)}
   return _connector;
 }
+
+// Инициализируем коннектор сразу при загрузке страницы
+// чтобы модал открывался быстро и сессия восстанавливалась
+const _earlyConnector=getConnector();
 
 function showWalletScreen(){
   return new Promise((resolve)=>{
     const overlay=document.createElement('div');
     overlay.id='wallet-overlay';
-    // z-index ниже чем у модала HOT Connector чтобы не перекрывать его
     overlay.style.cssText='position:fixed;inset:0;background:#1a1a2e;display:flex;align-items:center;justify-content:center;z-index:100;flex-direction:column;gap:20px;padding:24px';
     overlay.innerHTML=`
       <div style="font-size:2.8rem;font-weight:900;color:#fff;letter-spacing:-1px">2048<span style="color:#e94560">+</span></div>
@@ -910,7 +932,6 @@ function showWalletScreen(){
       return;
     }
 
-    // Слушаем signIn — срабатывает после выбора кошелька
     connector.on('wallet:signIn',(t)=>{
       const accountId=t.accounts[0].accountId;
       window._nearConnector=connector;
@@ -919,11 +940,10 @@ function showWalletScreen(){
     });
 
     document.getElementById('btn-connect-wallet').addEventListener('click',async()=>{
-      statusEl.textContent='';
+      statusEl.textContent='Открываем выбор кошелька...';
       try{
         await connector.connect();
       }catch(e){
-        // Пользователь закрыл модал — нормально
         statusEl.textContent='';
       }
     });
@@ -1001,6 +1021,23 @@ function renderLivesUI(){
 async function init(){
   let accountId=localStorage.getItem('nearAccountId');
 
+  // Пробуем восстановить сессию из коннектора (если кошелёк уже был подключён)
+  if(!accountId){
+    try{
+      const connector=getConnector();
+      if(connector){
+        const wallet=await connector.wallet().catch(()=>null);
+        if(wallet){
+          const accounts=await wallet.getAccounts().catch(()=>[]);
+          if(accounts&&accounts.length>0){
+            accountId=accounts[0].accountId;
+            localStorage.setItem('nearAccountId',accountId);
+          }
+        }
+      }
+    }catch(e){/* сессии нет — нормально */}
+  }
+
   if(!accountId){
     const result=await showWalletScreen();
     if(result){
@@ -1038,31 +1075,20 @@ async function init(){
   // Отрисовываем жизни
   renderLivesUI();
 
-  // Тратим жизнь при старте новой игры
+  // Тратим жизнь ТОЛЬКО при явном старте новой игры (не при загрузке страницы)
   const origReset=board.reset.bind(board);
   board.reset=()=>{
     if(LivesSystem.getCount()<=0){ui.toast('❤️ Нет жизней! Жди сброса.');return}
     LivesSystem.spend();
     renderLivesUI();
+    syncToDB();
     origReset();
   };
 
-  // Тратим жизнь при первом ходе (начало игры при init)
-  // Первая партия уже началась — тратим жизнь сразу
-  if(LivesSystem.getCount()>0){
-    LivesSystem.spend();
-    renderLivesUI();
-  }
-
-  // Блокируем ходы если жизней нет
-  const origMove=board.move.bind(board);
-  board.move=(dir)=>{
-    // Если игра уже идёт (есть плитки) — ходы разрешены без траты жизни
-    return origMove(dir);
-  };
+  // НЕ тратим жизнь при загрузке — жизнь тратится только при нажатии "Новая игра"
 
   if(currency.checkDailyBonus())ui.toast('🎁 Ежедневный бонус: +50 монет!');
-  if(accountId)ui.toast(`👋 ${accountId}`);
+  if(accountId)ui.toast(`👋 Подключён: ${accountId}`);
 
   const syncToDB=()=>{
     if(!playerId)return;

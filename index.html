@@ -492,16 +492,78 @@ class UI {
     this.board.reset();
   }
   _renderShop(){
-    document.getElementById('tab-shop').innerHTML=`
-      <div class="shop">
-        <h3 class="section-title">Пакеты монет</h3>
-        <div class="shop-grid">
-          <div class="shop-item"><div class="shop-coins">200🪙</div><div class="shop-label">Стартер</div><button class="btn-buy" onclick="alert('Демо: +200 монет')">$0.99</button></div>
-          <div class="shop-item"><div class="shop-coins">800🪙</div><div class="shop-label">Базовый</div><button class="btn-buy" onclick="alert('Демо: +800 монет')">$4.99</button></div>
-          <div class="shop-item"><div class="shop-coins">2400🪙</div><div class="shop-label">Премиум</div><button class="btn-buy" onclick="alert('Демо: +2400 монет')">$9.99</button></div>
-          <div class="shop-item"><div class="shop-coins">7000🪙</div><div class="shop-label">Мега</div><button class="btn-buy" onclick="alert('Демо: +7000 монет')">$19.99</button></div>
-        </div>
+    const el=document.getElementById('tab-shop');
+    const rows=LIFE_PACKS.map(p=>{
+      const price=daraiPrice(p.lives,p.discount);
+      const priceStr=price.toLocaleString();
+      const label=p.lives===1?'1 жизнь':p.lives<5?`${p.lives} жизни`:`${p.lives} жизней`;
+      const badge=p.discount>0?`<span style="background:#2e7d32;color:#fff;font-size:0.65rem;padding:2px 6px;border-radius:10px;margin-left:4px">−${p.discount}%</span>`:'';
+      return`<div class="shop-item">
+        <div style="font-size:1.5rem">❤️</div>
+        <div class="shop-coins">${label}${badge}</div>
+        <div class="shop-label">${priceStr} DARAI</div>
+        <button class="btn-buy" data-lives="${p.lives}" data-price="${price}">Купить</button>
       </div>`;
+    }).join('');
+
+    el.innerHTML=`<div class="shop">
+      <h3 class="section-title">Купить жизни за DARAI</h3>
+      <div style="color:var(--text-dim);font-size:0.75rem;padding:4px 0 8px">Токен: darai.tkn.near · 1 жизнь = 100 000 DARAI</div>
+      <div class="shop-grid">${rows}</div>
+      <div id="shop-status" style="color:#888;font-size:0.8rem;text-align:center;padding:8px 0;min-height:24px"></div>
+    </div>`;
+
+    el.querySelectorAll('.btn-buy').forEach(btn=>{
+      btn.addEventListener('click',async()=>{
+        const lives=parseInt(btn.dataset.lives);
+        const priceHuman=parseInt(btn.dataset.price);
+        await this._buyLives(lives,priceHuman);
+      });
+    });
+  }
+
+  async _buyLives(lives,priceHuman){
+    const statusEl=document.getElementById('shop-status');
+    const accountId=localStorage.getItem('nearAccountId');
+    if(!accountId){statusEl.textContent='Войди через кошелёк для покупки';return}
+
+    const lib=window.NearConnectLib;
+    if(!lib||!lib.NearConnector){statusEl.textContent='Кошелёк не подключён';return}
+
+    statusEl.textContent='Открываем кошелёк...';
+    try{
+      // Получаем подключённый кошелёк из коннектора
+      // Коннектор уже инициализирован глобально в init()
+      const wallet=await window._nearConnector.wallet();
+      // Сумма в наименьших единицах (18 decimals)
+      const amount=(BigInt(priceHuman)*BigInt('1'+'0'.repeat(18))).toString();
+      // ft_transfer — стандарт NEP-141
+      await wallet.signAndSendTransaction({
+        receiverId:DARAI_TOKEN,
+        actions:[{
+          type:'FunctionCall',
+          params:{
+            methodName:'ft_transfer',
+            args:{
+              receiver_id:'2048game.near', // адрес получателя (замени на свой)
+              amount,
+              memo:`buy_lives_${lives}`
+            },
+            gas:'30000000000000',
+            deposit:'1'
+          }
+        }]
+      });
+      // После успешной транзакции добавляем жизни
+      LivesSystem.addBought(lives);
+      renderLivesUI();
+      statusEl.textContent=`✓ +${lives} ❤️ куплено!`;
+      // Синхронизируем с БД
+      if(window._syncToDB)window._syncToDB();
+    }catch(e){
+      statusEl.textContent='Транзакция отменена или ошибка.';
+      console.error(e);
+    }
   }
   _renderUpgrades(){
     const el=document.getElementById('tab-upgrades'),u=this.upgrades,coins=this.currency.coins;
@@ -641,8 +703,27 @@ const db=new DB();
 // =============================================
 const LIVES_MAX=5;
 const LIVES_TZ_OFFSET=4; // Тбилиси UTC+4
+const DARAI_TOKEN='darai.tkn.near';
+const DARAI_DECIMALS=18;
+// Цена 1 жизни = 100 000 DARAI (в наименьших единицах = 100000 * 10^18)
+const DARAI_PER_LIFE=BigInt('100000'+'0'.repeat(18));
 
-// Все ключи localStorage привязаны к аккаунту
+// Пакеты: [количество жизней, скидка %]
+const LIFE_PACKS=[
+  {lives:1, discount:0},
+  {lives:2, discount:2},
+  {lives:3, discount:4},
+  {lives:5, discount:6},
+  {lives:7, discount:8},
+  {lives:10,discount:10},
+];
+
+function daraiPrice(lives,discountPct){
+  // Цена в DARAI (человекочитаемая, без decimals)
+  const base=100000*lives;
+  return Math.floor(base*(1-discountPct/100));
+}
+
 function lsKey(key,accountId){return accountId?key+'__'+accountId:key}
 
 const LivesSystem={
@@ -650,7 +731,8 @@ const LivesSystem={
   init(accountId){this._accountId=accountId},
   _get(){
     const d=JSON.parse(localStorage.getItem(lsKey('lives',this._accountId))||'null');
-    if(!d)return{count:LIVES_MAX,lastReset:this._todayKey()};
+    if(!d)return{count:LIVES_MAX,bought:0,lastReset:this._todayKey()};
+    if(d.bought===undefined)d.bought=0;
     return d;
   },
   _save(d){localStorage.setItem(lsKey('lives',this._accountId),JSON.stringify(d))},
@@ -670,8 +752,16 @@ const LivesSystem={
   checkReset(){
     const d=this._get();
     const today=this._todayKey();
-    if(d.lastReset!==today&&d.count<LIVES_MAX){
-      d.count=LIVES_MAX;d.lastReset=today;this._save(d);return true;
+    if(d.lastReset!==today){
+      // Сбрасываем только бесплатные жизни (до LIVES_MAX), купленные не трогаем
+      const bought=d.bought||0;
+      const freeAfterReset=LIVES_MAX;
+      // Итого = max(текущие, бесплатные) + купленные сверх
+      const newCount=Math.max(freeAfterReset+bought, d.count);
+      d.count=newCount;
+      d.lastReset=today;
+      this._save(d);
+      return true;
     }
     return false;
   },
@@ -679,22 +769,29 @@ const LivesSystem={
   spend(){
     const d=this._get();
     if(d.count<=0)return false;
-    d.count--;this._save(d);return true;
+    // Если тратим купленную жизнь — уменьшаем bought
+    if(d.bought>0&&d.count>LIVES_MAX)d.bought--;
+    d.count--;
+    this._save(d);
+    return true;
   },
-  // Загрузить из БД (при входе)
+  // Добавить купленные жизни (не сбрасываются при обновлении дня)
+  addBought(n){
+    const d=this._get();
+    d.count+=n;
+    d.bought=(d.bought||0)+n;
+    this._save(d);
+  },
   loadFromDB(lives,livesResetDate){
     const d=this._get();
     const today=this._todayKey();
-    // Если в БД дата сброса другая и жизней меньше 5 — берём из БД
-    // Берём максимум между локальным и БД (защита от потери)
     const dbCount=typeof lives==='number'?lives:LIVES_MAX;
     const dbDate=livesResetDate||'';
-    // Если дата сброса в БД совпадает с сегодня — берём count из БД
-    // Иначе — сброс (новый день)
     if(dbDate===today){
       d.count=Math.max(d.count,dbCount);
     } else {
-      d.count=LIVES_MAX;
+      const bought=d.bought||0;
+      d.count=LIVES_MAX+bought;
     }
     d.lastReset=today;
     this._save(d);
@@ -758,6 +855,7 @@ function showWalletScreen(){
 
     connector.on('wallet:signIn',(t)=>{
       const accountId=t.accounts[0].accountId;
+      window._nearConnector=connector; // сохраняем глобально для покупок
       statusEl.textContent='✓ '+accountId;
       setTimeout(()=>{overlay.remove();resolve(accountId)},600);
     });
@@ -808,41 +906,26 @@ function applyPlayerData(player,accountId){
 // Lives UI
 // =============================================
 function renderLivesUI(){
-  // Удаляем старый блок если есть
   const old=document.getElementById('lives-bar');
   if(old)old.remove();
 
   const count=LivesSystem.getCount();
   const bar=document.createElement('div');
   bar.id='lives-bar';
-  bar.style.cssText='display:flex;align-items:center;justify-content:center;gap:6px;padding:6px 0 2px';
+  bar.style.cssText='display:flex;align-items:center;justify-content:center;gap:8px;padding:6px 0 2px';
 
   if(count>0){
-    let html='';
-    for(let i=0;i<LIVES_MAX;i++){
-      html+=`<span style="font-size:1.3rem;opacity:${i<count?'1':'0.2'}">${i<count?'❤️':'🖤'}</span>`;
-    }
-    bar.innerHTML=html;
+    bar.innerHTML=`<span style="font-size:1.4rem">❤️</span><span style="font-size:1.1rem;font-weight:700;color:#fff">${count}</span>`;
   } else {
-    bar.innerHTML=`<span style="color:#e94560;font-size:0.85rem;font-weight:700">❤️ Жизни закончились — следующий сброс через <span id="lives-countdown"></span></span>`;
-    // Запускаем обратный отсчёт
-    const tick=()=>{
-      const el=document.getElementById('lives-countdown');
-      if(el)el.textContent=LivesSystem.formatCountdown();
-    };
+    bar.innerHTML=`<span style="font-size:1.1rem">❤️</span><span style="color:#e94560;font-size:0.85rem;font-weight:700">0 — сброс через <span id="lives-countdown"></span></span>`;
+    const tick=()=>{const el=document.getElementById('lives-countdown');if(el)el.textContent=LivesSystem.formatCountdown()};
     tick();
     const timer=setInterval(()=>{
-      // Проверяем сброс
-      if(LivesSystem.checkReset()){
-        clearInterval(timer);
-        renderLivesUI();
-        return;
-      }
+      if(LivesSystem.checkReset()){clearInterval(timer);renderLivesUI();return}
       tick();
     },1000);
   }
 
-  // Вставляем после шапки (перед метриками)
   const app=document.getElementById('app');
   const header=app.querySelector('.header');
   if(header&&header.nextSibling)app.insertBefore(bar,header.nextSibling);
@@ -966,6 +1049,8 @@ async function init(){
 
   // Резервная синхронизация каждые 15 сек
   setInterval(syncToDB,15000);
+  // Делаем syncToDB доступным глобально (для магазина)
+  window._syncToDB=syncToDB;
 
   // Синхронизация при закрытии/уходе со страницы
   window.addEventListener('beforeunload',()=>syncToDB());

@@ -99,6 +99,18 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .achievement-popup{position:absolute;top:8px;left:8px;right:8px;background:rgba(233,69,96,0.95);color:#fff;padding:10px 14px;border-radius:var(--radius);font-size:0.85rem;font-weight:700;text-align:center;z-index:20;animation:slide-down 0.3s ease}
 @keyframes slide-down{from{transform:translateY(-20px);opacity:0}to{transform:translateY(0);opacity:1}}
 @media(max-width:360px){.metrics{grid-template-columns:repeat(2,1fr)}.metric-value{font-size:0.85rem}}
+@media(max-width:480px){
+  body{padding:6px}
+  .header-title{font-size:1.6rem}
+  .coins-display{padding:5px 10px;font-size:0.95rem}
+  .btn-action{font-size:0.72rem;padding:7px 3px}
+  .tile{font-size:clamp(0.6rem,2.5vw,1.2rem)}
+  .shop-grid{grid-template-columns:repeat(2,1fr)}
+  .tab{font-size:0.72rem;padding:7px 2px}
+  .overlay-content{padding:16px}
+  .overlay-title{font-size:1.3rem}
+  .btn-overlay{padding:10px;font-size:0.88rem}
+}
 .lb-wrap{display:flex;flex-direction:column;gap:10px}
 .lb-toggle{display:flex;background:var(--surface);border-radius:var(--radius);padding:3px;gap:4px}
 .lb-toggle-btn{flex:1;padding:7px 4px;border:none;background:transparent;color:var(--text-dim);border-radius:6px;cursor:pointer;font-size:0.8rem;transition:all 0.15s}
@@ -1043,23 +1055,6 @@ function renderLivesUI(){
 // =============================================
 async function init(){
   let accountId=localStorage.getItem('nearAccountId');
-
-  // Пробуем восстановить сессию из коннектора (если кошелёк уже был подключён)
-  if(!accountId){
-    try{
-      const connector=getConnector();
-      if(connector){
-        const wallet=await connector.wallet().catch(()=>null);
-        if(wallet){
-          const accounts=await wallet.getAccounts().catch(()=>[]);
-          if(accounts&&accounts.length>0){
-            accountId=accounts[0].accountId;
-            localStorage.setItem('nearAccountId',accountId);
-          }
-        }
-      }
-    }catch(e){/* сессии нет — нормально */}
-  }
 
   if(!accountId){
     const result=await showWalletScreen();

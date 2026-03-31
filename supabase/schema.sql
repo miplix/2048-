@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS players (
   max_tile INTEGER NOT NULL DEFAULT 0,
   upgrades JSONB NOT NULL DEFAULT '{}',
   achievements JSONB NOT NULL DEFAULT '{}',
+  lives INTEGER NOT NULL DEFAULT 5,
+  lives_reset_date TEXT NOT NULL DEFAULT '',
   last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -80,3 +82,7 @@ CREATE POLICY "weekly_update" ON leaderboard_weekly FOR UPDATE USING (true);
 
 -- tournament_archive: только чтение для всех (запись — через service_role вручную или cron)
 CREATE POLICY "archive_select" ON tournament_archive FOR SELECT USING (true);
+
+-- Миграция: добавить колонки lives если их нет (для существующих БД)
+ALTER TABLE players ADD COLUMN IF NOT EXISTS lives INTEGER NOT NULL DEFAULT 5;
+ALTER TABLE players ADD COLUMN IF NOT EXISTS lives_reset_date TEXT NOT NULL DEFAULT '';

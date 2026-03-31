@@ -134,9 +134,9 @@ class UpgradeSystem {
   static COIN_BONUS_COSTS=[600,1400,2800];
   static COMBO_COSTS=[500,1000,2000,3500,5000,7000,9000,11000,12500,14000];
   static AUTO_DELETE_COSTS=[2000,4500,9000];
-  constructor(){this._load()}
-  _load(){const r=localStorage.getItem('upgrades');const d={spawnLevel:0,spawnUnlocked:false,coinBonusLevel:0,comboLevel:0,autoDeleteLevel:0,secondHeart:false,grid5:false,grid6:false};this._data=r?{...d,...JSON.parse(r)}:d}
-  _save(){localStorage.setItem('upgrades',JSON.stringify(this._data))}
+  constructor(k){this._k=k||(x=>x);this._load()}
+  _load(){const r=localStorage.getItem(this._k('upgrades'));const d={spawnLevel:0,spawnUnlocked:false,coinBonusLevel:0,comboLevel:0,autoDeleteLevel:0,secondHeart:false,grid5:false,grid6:false};this._data=r?{...d,...JSON.parse(r)}:d}
+  _save(){localStorage.setItem(this._k('upgrades'),JSON.stringify(this._data))}
   getSpawnLevel(){return this._data.spawnLevel}
   isSpawnUnlocked(){return this._data.spawnUnlocked}
   unlockSpawn(){this._data.spawnUnlocked=true;this._save()}
@@ -164,15 +164,15 @@ class UpgradeSystem {
 // CurrencyManager
 // =============================================
 class CurrencyManager {
-  constructor(u){this.upgradeSystem=u;this._coins=parseInt(localStorage.getItem('coins')||'0',10);this._listeners=[]}
+  constructor(u,k){this.upgradeSystem=u;this._k=k||(x=>x);this._coins=parseInt(localStorage.getItem(this._k('coins'))||'0',10);this._listeners=[]}
   get coins(){return this._coins}
   onChange(fn){this._listeners.push(fn)}
-  _notify(){localStorage.setItem('coins',this._coins);this._listeners.forEach(fn=>fn(this._coins))}
+  _notify(){localStorage.setItem(this._k('coins'),this._coins);this._listeners.forEach(fn=>fn(this._coins))}
   calcMergeCoins(v){if(v<16)return 0;return Math.min(8,Math.max(0,Math.floor(Math.log2(v)-3)))}
   awardMerge(v){let b=this.calcMergeCoins(v);if(b===0)return 0;if(v>=16){const bl=this.upgradeSystem.getCoinBonusLevel();b*=1+([0,0.05,0.10,0.15][bl]||0)}if(v>=128){b*=1+this.upgradeSystem.getComboLevel()*0.105}const e=Math.floor(b);this._coins+=e;this._notify();return e}
   add(a){this._coins+=a;this._notify()}
   spend(a){if(this._coins<a)return false;this._coins-=a;this._notify();return true}
-  checkDailyBonus(){const t=new Date().toDateString();if(localStorage.getItem('dailyBonusDate')!==t){localStorage.setItem('dailyBonusDate',t);this.add(50);return true}return false}
+  checkDailyBonus(){const t=new Date().toDateString();const key=this._k('dailyBonusDate');if(localStorage.getItem(key)!==t){localStorage.setItem(key,t);this.add(50);return true}return false}
 }
 
 // =============================================
@@ -189,9 +189,9 @@ class SpawnSystem {
 // =============================================
 class AchievementSystem {
   static BASE={128:20,256:26,512:33,1024:41,2048:50,4096:55,8192:61,16384:67,32768:73};
-  constructor(){this._load();this._listeners=[]}
-  _load(){const r=localStorage.getItem('achievements');const d={currentGoal:128,pendingClaim:false,collected:[],maxReached:0};this._data=r?{...d,...JSON.parse(r)}:d}
-  _save(){localStorage.setItem('achievements',JSON.stringify(this._data))}
+  constructor(k){this._k=k||(x=>x);this._load();this._listeners=[]}
+  _load(){const r=localStorage.getItem(this._k('achievements'));const d={currentGoal:128,pendingClaim:false,collected:[],maxReached:0};this._data=r?{...d,...JSON.parse(r)}:d}
+  _save(){localStorage.setItem(this._k('achievements'),JSON.stringify(this._data))}
   onChange(fn){this._listeners.push(fn)}
   _notify(){this._listeners.forEach(fn=>fn(this._data))}
   getReward(t){if(AchievementSystem.BASE[t])return AchievementSystem.BASE[t];let p=32768,r=73;while(p<t){p*=2;r=Math.round(r*1.1)}return r}
@@ -207,9 +207,10 @@ class AchievementSystem {
 // GameBoard
 // =============================================
 class GameBoard {
-  constructor(size,spawn,currency,upgrades,achievements){
+  constructor(size,spawn,currency,upgrades,achievements,k){
     this.size=size;this.spawnSystem=spawn;this.currency=currency;this.upgrades=upgrades;this.achievements=achievements;
-    this.score=0;this.bestScore=parseInt(localStorage.getItem('bestScore')||'0',10);
+    this._k=k||(x=>x);
+    this.score=0;this.bestScore=parseInt(localStorage.getItem(this._k('bestScore'))||'0',10);
     this.goal=2048;this.mergeCount=0;this.autoDeleteCharge=false;this.secondHeartUsed=false;
     this._prevGrid=null;this._prevScore=0;
     this._listeners={move:[],gameOver:[],win:[],autoCharge:[]};
@@ -241,7 +242,7 @@ class GameBoard {
       if(al>0){const th=[20,15,10][al-1];if(this.mergeCount%th===0){this.autoDeleteCharge=true;this._emit('autoCharge',true)}}
       this.achievements.notifyTileReached(v);
     }
-    if(this.score>this.bestScore){this.bestScore=this.score;localStorage.setItem('bestScore',this.bestScore)}
+    if(this.score>this.bestScore){this.bestScore=this.score;localStorage.setItem(this._k('bestScore'),this.bestScore)}
     const maxTile=Math.max(...this.grid.flat());
     if(maxTile>=this.goal){if(this.goal===2048&&!this.upgrades.isSpawnUnlocked())this.upgrades.unlockSpawn();this.goal*=2;this._emit('win',this.goal/2)}
     this._spawnTile();this._emit('move',this._state());
@@ -603,9 +604,15 @@ class DB {
     const{data:cr,error}=await this._client.from('players').insert({nickname:accountId}).select().single();
     if(error)throw error;return cr;
   }
-  async savePlayer(id,{coins,bestScore,maxTile,upgrades,achievements}){
+  async savePlayer(id,{coins,bestScore,maxTile,upgrades,achievements,lives,livesResetDate}){
     await this._wait();
-    await this._client.from('players').update({coins,best_score:bestScore,max_tile:maxTile,upgrades,achievements,last_seen_at:new Date().toISOString()}).eq('id',id);
+    await this._client.from('players').update({
+      coins,best_score:bestScore,max_tile:maxTile,
+      upgrades,achievements,
+      lives:lives||0,
+      lives_reset_date:livesResetDate||'',
+      last_seen_at:new Date().toISOString()
+    }).eq('id',id);
   }
   async submitScore(playerId,nickname,score,maxTile){
     await this._wait();
@@ -630,42 +637,41 @@ class DB {
 const db=new DB();
 
 // =============================================
-// Lives System (5 жизней, сброс в 00:00 Тбилиси = UTC+4)
+// Lives System — привязан к accountId, синхронизируется с БД
 // =============================================
 const LIVES_MAX=5;
 const LIVES_TZ_OFFSET=4; // Тбилиси UTC+4
 
+// Все ключи localStorage привязаны к аккаунту
+function lsKey(key,accountId){return accountId?key+'__'+accountId:key}
+
 const LivesSystem={
+  _accountId:null,
+  init(accountId){this._accountId=accountId},
   _get(){
-    const d=JSON.parse(localStorage.getItem('lives')||'null');
+    const d=JSON.parse(localStorage.getItem(lsKey('lives',this._accountId))||'null');
     if(!d)return{count:LIVES_MAX,lastReset:this._todayKey()};
     return d;
   },
-  _save(d){localStorage.setItem('lives',JSON.stringify(d))},
-  // Ключ текущего дня по Тбилиси (YYYY-MM-DD)
+  _save(d){localStorage.setItem(lsKey('lives',this._accountId),JSON.stringify(d))},
   _todayKey(){
     const now=new Date();
     const tbNow=new Date(now.getTime()+LIVES_TZ_OFFSET*3600000);
     return tbNow.toISOString().slice(0,10);
   },
-  // Следующий сброс: 00:00 Тбилиси следующего дня (в мс UTC)
   nextResetMs(){
     const now=new Date();
     const tbNow=new Date(now.getTime()+LIVES_TZ_OFFSET*3600000);
     const tbMidnight=new Date(tbNow);
     tbMidnight.setUTCHours(0,0,0,0);
     tbMidnight.setUTCDate(tbMidnight.getUTCDate()+1);
-    return tbMidnight.getTime()-LIVES_TZ_OFFSET*3600000; // обратно в UTC
+    return tbMidnight.getTime()-LIVES_TZ_OFFSET*3600000;
   },
-  // Проверяем и применяем суточный сброс
   checkReset(){
     const d=this._get();
     const today=this._todayKey();
     if(d.lastReset!==today&&d.count<LIVES_MAX){
-      d.count=LIVES_MAX;
-      d.lastReset=today;
-      this._save(d);
-      return true;
+      d.count=LIVES_MAX;d.lastReset=today;this._save(d);return true;
     }
     return false;
   },
@@ -673,11 +679,26 @@ const LivesSystem={
   spend(){
     const d=this._get();
     if(d.count<=0)return false;
-    d.count--;
-    this._save(d);
-    return true;
+    d.count--;this._save(d);return true;
   },
-  // Форматируем обратный отсчёт
+  // Загрузить из БД (при входе)
+  loadFromDB(lives,livesResetDate){
+    const d=this._get();
+    const today=this._todayKey();
+    // Если в БД дата сброса другая и жизней меньше 5 — берём из БД
+    // Берём максимум между локальным и БД (защита от потери)
+    const dbCount=typeof lives==='number'?lives:LIVES_MAX;
+    const dbDate=livesResetDate||'';
+    // Если дата сброса в БД совпадает с сегодня — берём count из БД
+    // Иначе — сброс (новый день)
+    if(dbDate===today){
+      d.count=Math.max(d.count,dbCount);
+    } else {
+      d.count=LIVES_MAX;
+    }
+    d.lastReset=today;
+    this._save(d);
+  },
   formatCountdown(){
     const ms=this.nextResetMs()-Date.now();
     if(ms<=0)return'00:00:00';
@@ -739,20 +760,34 @@ function showWalletScreen(){
 }
 
 // =============================================
-// Восстановить прогресс из БД в localStorage
+// Восстановить прогресс из БД в localStorage (per-account)
 // =============================================
-function applyPlayerData(player){
-  const localCoins=parseInt(localStorage.getItem('coins')||'0');
-  if((player.coins||0)>localCoins)localStorage.setItem('coins',player.coins);
-  const localBest=parseInt(localStorage.getItem('bestScore')||'0');
-  if((player.best_score||0)>localBest)localStorage.setItem('bestScore',player.best_score);
-  if(player.upgrades&&Object.keys(player.upgrades).length>0)localStorage.setItem('upgrades',JSON.stringify(player.upgrades));
+function applyPlayerData(player,accountId){
+  const k=(key)=>lsKey(key,accountId);
+
+  // Монеты: берём максимум
+  const localCoins=parseInt(localStorage.getItem(k('coins'))||'0');
+  if((player.coins||0)>localCoins)localStorage.setItem(k('coins'),player.coins);
+
+  // Рекорд
+  const localBest=parseInt(localStorage.getItem(k('bestScore'))||'0');
+  if((player.best_score||0)>localBest)localStorage.setItem(k('bestScore'),player.best_score);
+
+  // Апгрейды — БД источник истины
+  if(player.upgrades&&Object.keys(player.upgrades).length>0)
+    localStorage.setItem(k('upgrades'),JSON.stringify(player.upgrades));
+
+  // Достижения — мёрджим
   if(player.achievements&&Object.keys(player.achievements).length>0){
-    const localAch=JSON.parse(localStorage.getItem('achievements')||'{}');
+    const localAch=JSON.parse(localStorage.getItem(k('achievements'))||'{}');
     const merged={...localAch,...player.achievements};
-    if((player.achievements.maxReached||0)>(localAch.maxReached||0))merged.maxReached=player.achievements.maxReached;
-    localStorage.setItem('achievements',JSON.stringify(merged));
+    if((player.achievements.maxReached||0)>(localAch.maxReached||0))
+      merged.maxReached=player.achievements.maxReached;
+    localStorage.setItem(k('achievements'),JSON.stringify(merged));
   }
+
+  // Жизни — загружаем из БД
+  LivesSystem.loadFromDB(player.lives,player.lives_reset_date);
 }
 
 // =============================================
@@ -817,20 +852,26 @@ async function init(){
   let playerId=null;
   let playerNickname=accountId||('guest_'+Math.random().toString(36).slice(2,8));
 
+  // Инициализируем LivesSystem с accountId ДО загрузки данных
+  LivesSystem.init(accountId);
+
   if(accountId){
     try{
       const player=await db.getOrCreatePlayer(accountId);
       playerId=player.id;
       playerNickname=player.nickname;
-      applyPlayerData(player);
+      applyPlayerData(player,accountId);
     }catch(e){console.warn('DB unavailable, playing offline')}
   }
 
-  const upgrades=new UpgradeSystem();
-  const currency=new CurrencyManager(upgrades);
+  // Все localStorage ключи привязаны к аккаунту
+  const k=(key)=>lsKey(key,accountId);
+
+  const upgrades=new UpgradeSystem(k);
+  const currency=new CurrencyManager(upgrades,k);
   const spawn=new SpawnSystem(upgrades);
-  const achievements=new AchievementSystem();
-  const board=new GameBoard(upgrades.getGridSize(),spawn,currency,upgrades,achievements);
+  const achievements=new AchievementSystem(k);
+  const board=new GameBoard(upgrades.getGridSize(),spawn,currency,upgrades,achievements,k);
   const ui=new UI(board,currency,upgrades,achievements);
 
   // Отрисовываем жизни
@@ -864,12 +905,15 @@ async function init(){
 
   const syncToDB=()=>{
     if(!playerId)return;
+    const livesData=LivesSystem._get();
     db.savePlayer(playerId,{
       coins:currency.coins,
-      bestScore:parseInt(localStorage.getItem('bestScore')||'0'),
+      bestScore:parseInt(localStorage.getItem(k('bestScore'))||'0'),
       maxTile:achievements.getMaxReached(),
-      upgrades:JSON.parse(localStorage.getItem('upgrades')||'{}'),
-      achievements:JSON.parse(localStorage.getItem('achievements')||'{}'),
+      upgrades:JSON.parse(localStorage.getItem(k('upgrades'))||'{}'),
+      achievements:JSON.parse(localStorage.getItem(k('achievements'))||'{}'),
+      lives:livesData.count,
+      livesResetDate:livesData.lastReset||'',
     });
   };
 
@@ -879,7 +923,13 @@ async function init(){
   board.on('gameOver',async(state)=>{
     if(playerId){
       const maxTile=Math.max(...state.grid.flat());
-      db.savePlayer(playerId,{coins:currency.coins,bestScore:state.bestScore,maxTile,upgrades:JSON.parse(localStorage.getItem('upgrades')||'{}'),achievements:JSON.parse(localStorage.getItem('achievements')||'{}')});
+      const livesData=LivesSystem._get();
+      db.savePlayer(playerId,{
+        coins:currency.coins,bestScore:state.bestScore,maxTile,
+        upgrades:JSON.parse(localStorage.getItem(k('upgrades'))||'{}'),
+        achievements:JSON.parse(localStorage.getItem(k('achievements'))||'{}'),
+        lives:livesData.count,livesResetDate:livesData.lastReset||'',
+      });
       db.submitScore(playerId,playerNickname,state.score,maxTile);
     }
   });

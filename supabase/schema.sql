@@ -86,3 +86,23 @@ CREATE POLICY "archive_select" ON tournament_archive FOR SELECT USING (true);
 -- Миграция: добавить колонки lives если их нет (для существующих БД)
 ALTER TABLE players ADD COLUMN IF NOT EXISTS lives INTEGER NOT NULL DEFAULT 5;
 ALTER TABLE players ADD COLUMN IF NOT EXISTS lives_reset_date TEXT NOT NULL DEFAULT '';
+
+-- 5. Таблица покупок (защита от двойного начисления)
+CREATE TABLE IF NOT EXISTS purchases (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  player_id UUID NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  account_id TEXT NOT NULL,
+  tx_hash TEXT NOT NULL UNIQUE,  -- уникальность предотвращает двойное начисление
+  lives_bought INTEGER NOT NULL DEFAULT 0,
+  amount_darai TEXT NOT NULL,    -- сумма в наименьших единицах (строка, т.к. большое число)
+  status TEXT NOT NULL DEFAULT 'pending', -- pending | confirmed | failed
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_purchases_tx_hash ON purchases(tx_hash);
+CREATE INDEX IF NOT EXISTS idx_purchases_player ON purchases(player_id);
+
+ALTER TABLE purchases ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "purchases_select" ON purchases FOR SELECT USING (true);
+CREATE POLICY "purchases_insert" ON purchases FOR INSERT WITH CHECK (true);
+CREATE POLICY "purchases_update" ON purchases FOR UPDATE USING (true);

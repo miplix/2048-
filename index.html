@@ -493,6 +493,7 @@ class UI {
   }
   _renderShop(){
     const el=document.getElementById('tab-shop');
+    const daraiIcon=`<img src="https://nearblocks.io/images/tokenimages/darai.tkn.near.jpg" style="width:1em;height:1em;border-radius:50%;vertical-align:middle;object-fit:cover;display:inline-block;margin-right:3px" onerror="this.style.display='none'">`;
     const rows=LIFE_PACKS.map(p=>{
       const price=daraiPrice(p.lives,p.discount);
       const priceStr=price.toLocaleString();
@@ -501,18 +502,16 @@ class UI {
       return`<div class="shop-item">
         <div style="font-size:1.5rem">❤️</div>
         <div class="shop-coins">${label}${badge}</div>
-        <div class="shop-label">${priceStr} DARAI</div>
+        <div class="shop-label" style="display:flex;align-items:center;justify-content:center;gap:3px">${daraiIcon}<span>${priceStr} DARAI</span></div>
         <button class="btn-buy" data-lives="${p.lives}" data-price="${price}">Купить</button>
       </div>`;
     }).join('');
-
     el.innerHTML=`<div class="shop">
       <h3 class="section-title">Купить жизни за DARAI</h3>
       <div style="color:var(--text-dim);font-size:0.75rem;padding:4px 0 8px">Токен: darai.tkn.near · 1 жизнь = 100 000 DARAI</div>
       <div class="shop-grid">${rows}</div>
       <div id="shop-status" style="color:#888;font-size:0.8rem;text-align:center;padding:8px 0;min-height:24px"></div>
     </div>`;
-
     el.querySelectorAll('.btn-buy').forEach(btn=>{
       btn.addEventListener('click',async()=>{
         const lives=parseInt(btn.dataset.lives);
@@ -524,45 +523,76 @@ class UI {
 
   async _buyLives(lives,priceHuman){
     const statusEl=document.getElementById('shop-status');
+    statusEl.style.color='#888';
     const accountId=localStorage.getItem('nearAccountId');
     if(!accountId){statusEl.textContent='Войди через кошелёк для покупки';return}
-
-    const lib=window.NearConnectLib;
-    if(!lib||!lib.NearConnector){statusEl.textContent='Кошелёк не подключён';return}
+    if(!window._nearConnector){statusEl.textContent='Кошелёк не подключён. Перезайди в аккаунт.';return}
+    if(!window._playerId){statusEl.textContent='Нет данных игрока. Перезайди.';return}
 
     statusEl.textContent='Открываем кошелёк...';
+    let txHash=null;
     try{
-      // Получаем подключённый кошелёк из коннектора
-      // Коннектор уже инициализирован глобально в init()
       const wallet=await window._nearConnector.wallet();
-      // Сумма в наименьших единицах (18 decimals)
       const amount=(BigInt(priceHuman)*BigInt('1'+'0'.repeat(18))).toString();
-      // ft_transfer — стандарт NEP-141
-      await wallet.signAndSendTransaction({
+      const result=await wallet.signAndSendTransaction({
         receiverId:DARAI_TOKEN,
         actions:[{
           type:'FunctionCall',
           params:{
             methodName:'ft_transfer',
-            args:{
-              receiver_id:'2048game.near', // адрес получателя (замени на свой)
-              amount,
-              memo:`buy_lives_${lives}`
-            },
+            args:{receiver_id:'2048game.near',amount,memo:`buy_lives_${lives}`},
             gas:'30000000000000',
             deposit:'1'
           }
         }]
       });
-      // После успешной транзакции добавляем жизни
+      txHash=result?.transaction?.hash||result?.transaction_outcome?.id||null;
+      if(!txHash){statusEl.textContent='Транзакция отправлена, но хэш не получен. Обратись в поддержку.';return}
+    }catch(e){
+      statusEl.textContent='Транзакция отменена.';
+      console.error('tx error',e);
+      return;
+    }
+
+    statusEl.textContent='Проверяем транзакцию...';
+    try{
+      const used=await db.isTxUsed(txHash);
+      if(used){statusEl.textContent='Эта транзакция уже была использована.';return}
+      const verified=await this._verifyTx(txHash,accountId,priceHuman);
+      if(!verified){statusEl.textContent='Транзакция не прошла проверку. Обратись в поддержку.';return}
+      const amount=(BigInt(priceHuman)*BigInt('1'+'0'.repeat(18))).toString();
+      await db.recordPurchase(window._playerId,accountId,txHash,lives,amount);
       LivesSystem.addBought(lives);
       renderLivesUI();
-      statusEl.textContent=`✓ +${lives} ❤️ куплено!`;
-      // Синхронизируем с БД
       if(window._syncToDB)window._syncToDB();
+      statusEl.style.color='#4caf50';
+      statusEl.textContent=`✓ +${lives} ❤️ успешно куплено!`;
     }catch(e){
-      statusEl.textContent='Транзакция отменена или ошибка.';
-      console.error(e);
+      statusEl.textContent='Ошибка верификации. Жизни не начислены.';
+      console.error('verify error',e);
+    }
+  }
+
+  async _verifyTx(txHash,senderAccountId,expectedAmountHuman){
+    try{
+      // NearBlocks возвращает последние транзакции — ищем нужный хэш
+      const url=`https://api.nearblocks.io/v1/account/2048game.near/ft-txns?contract=${DARAI_TOKEN}&limit=25`;
+      const resp=await fetch(url);
+      if(!resp.ok)return false;
+      const data=await resp.json();
+      const txns=data.txns||[];
+      const tx=txns.find(t=>t.transaction_hash===txHash);
+      if(!tx)return false;
+      if(!tx.outcomes?.status)return false;
+      // Проверяем отправителя (affected = получатель 2048game.near, involved = отправитель)
+      if(tx.involved_account_id!==senderAccountId)return false;
+      const expectedAmount=(BigInt(expectedAmountHuman)*BigInt('1'+'0'.repeat(18))).toString();
+      const delta=(tx.delta_amount||'').replace('-','');
+      if(delta!==expectedAmount)return false;
+      return true;
+    }catch(e){
+      console.error('NearBlocks verify error',e);
+      return false;
     }
   }
   _renderUpgrades(){
@@ -693,6 +723,24 @@ class DB {
     await this._wait();
     const{data}=await this._client.from('leaderboard_weekly').select('nickname,best_score,max_tile').eq('week_start',getWeekStart()).order('best_score',{ascending:false}).limit(limit);
     return data||[];
+  }
+
+  // Проверить что tx_hash ещё не использован
+  async isTxUsed(txHash){
+    await this._wait();
+    const{data}=await this._client.from('purchases').select('id').eq('tx_hash',txHash).maybeSingle();
+    return!!data;
+  }
+
+  // Записать покупку (UNIQUE на tx_hash защищает от дублей)
+  async recordPurchase(playerId,accountId,txHash,livesBought,amountDarai){
+    await this._wait();
+    const{error}=await this._client.from('purchases').insert({
+      player_id:playerId,account_id:accountId,
+      tx_hash:txHash,lives_bought:livesBought,
+      amount_darai:amountDarai,status:'confirmed'
+    });
+    if(error)throw error;
   }
 }
 
@@ -956,6 +1004,7 @@ async function init(){
     try{
       const player=await db.getOrCreatePlayer(accountId);
       playerId=player.id;
+      window._playerId=player.id; // глобально для магазина
       playerNickname=player.nickname;
       applyPlayerData(player,accountId);
     }catch(e){console.warn('DB unavailable, playing offline')}

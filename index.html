@@ -740,7 +740,21 @@ function showWalletScreen(){
       return;
     }
 
-    const connector=new lib.NearConnector({footerBranding:null});
+    // network: mainnet обязателен для большинства кошельков
+    // walletConnect projectId нужен для WalletConnect/Unity кошельков
+    const connector=new lib.NearConnector({
+      network:'mainnet',
+      footerBranding:null,
+      walletConnect:{
+        projectId:'1292473190ce7eb75c9de67e15aaad99',
+        metadata:{
+          name:'2048+',
+          description:'2048+ Game',
+          url:window.location.origin||'https://2048.vercel.app',
+          icons:[]
+        }
+      }
+    });
 
     connector.on('wallet:signIn',(t)=>{
       const accountId=t.accounts[0].accountId;

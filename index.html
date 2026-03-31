@@ -856,13 +856,38 @@ const LivesSystem={
 
 // =============================================
 // NEAR Wallet Login (HOT Connector — near-connect.bundle.js)
-// Поддерживает: HOT Wallet, Meteor, MyNearWallet, Nightly и др.
 // =============================================
+
+// Коннектор создаётся один раз глобально — важно для корректной работы модала
+let _connector=null;
+function getConnector(){
+  if(_connector)return _connector;
+  const lib=window.NearConnectLib;
+  if(!lib||!lib.NearConnector)return null;
+  try{
+    _connector=new lib.NearConnector({
+      network:'mainnet',
+      footerBranding:null,
+      walletConnect:{
+        projectId:'1292473190ce7eb75c9de67e15aaad99',
+        metadata:{
+          name:'2048+',
+          description:'2048+ Game',
+          url:window.location.origin||'https://2048.vercel.app',
+          icons:[]
+        }
+      }
+    });
+  }catch(e){console.error('NearConnector init error',e)}
+  return _connector;
+}
+
 function showWalletScreen(){
   return new Promise((resolve)=>{
     const overlay=document.createElement('div');
     overlay.id='wallet-overlay';
-    overlay.style.cssText='position:fixed;inset:0;background:#1a1a2e;display:flex;align-items:center;justify-content:center;z-index:9999;flex-direction:column;gap:20px;padding:24px';
+    // z-index ниже чем у модала HOT Connector чтобы не перекрывать его
+    overlay.style.cssText='position:fixed;inset:0;background:#1a1a2e;display:flex;align-items:center;justify-content:center;z-index:100;flex-direction:column;gap:20px;padding:24px';
     overlay.innerHTML=`
       <div style="font-size:2.8rem;font-weight:900;color:#fff;letter-spacing:-1px">2048<span style="color:#e94560">+</span></div>
       <div style="color:#aaa;font-size:0.95rem;text-align:center;max-width:280px;line-height:1.5">Подключи HOT / NEAR кошелёк для сохранения прогресса и участия в турнирах</div>
@@ -877,40 +902,30 @@ function showWalletScreen(){
     document.body.appendChild(overlay);
     const statusEl=document.getElementById('wallet-status');
 
-    const lib=window.NearConnectLib;
-    if(!lib||!lib.NearConnector){
-      statusEl.textContent='Ошибка загрузки SDK';
+    const connector=getConnector();
+    if(!connector){
+      statusEl.textContent='Ошибка загрузки SDK. Обнови страницу.';
       document.getElementById('btn-connect-wallet').disabled=true;
       document.getElementById('btn-skip-wallet').addEventListener('click',()=>{overlay.remove();resolve(null)});
       return;
     }
 
-    // network: mainnet обязателен для большинства кошельков
-    // walletConnect projectId нужен для WalletConnect/Unity кошельков
-    const connector=new lib.NearConnector({
-      network:'mainnet',
-      footerBranding:null,
-      walletConnect:{
-        projectId:'1292473190ce7eb75c9de67e15aaad99',
-        metadata:{
-          name:'2048+',
-          description:'2048+ Game',
-          url:window.location.origin||'https://2048.vercel.app',
-          icons:[]
-        }
-      }
-    });
-
+    // Слушаем signIn — срабатывает после выбора кошелька
     connector.on('wallet:signIn',(t)=>{
       const accountId=t.accounts[0].accountId;
-      window._nearConnector=connector; // сохраняем глобально для покупок
+      window._nearConnector=connector;
       statusEl.textContent='✓ '+accountId;
       setTimeout(()=>{overlay.remove();resolve(accountId)},600);
     });
 
-    document.getElementById('btn-connect-wallet').addEventListener('click',()=>{
+    document.getElementById('btn-connect-wallet').addEventListener('click',async()=>{
       statusEl.textContent='';
-      connector.connect().catch(()=>{statusEl.textContent='Отменено.'});
+      try{
+        await connector.connect();
+      }catch(e){
+        // Пользователь закрыл модал — нормально
+        statusEl.textContent='';
+      }
     });
 
     document.getElementById('btn-skip-wallet').addEventListener('click',()=>{

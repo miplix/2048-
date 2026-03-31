@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
+<title>2048+</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#1a1a2e;--surface:#16213e;--surface2:#0f3460;--accent:#e94560;--text:#eaeaea;--text-dim:#888;--radius:8px;--gap:8px}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;justify-content:center;padding:12px}
+#app{width:100%;max-width:480px;display:flex;flex-direction:column;gap:10px}
+.header{display:flex;justify-content:space-between;align-items:center;padding:8px 0}
+.header-title{font-size:2rem;font-weight:900;color:#fff}
+.header-title .plus{color:var(--accent)}
+.coins-display{display:flex;align-items:center;gap:6px;background:var(--surface2);padding:6px 14px;border-radius:20px;font-size:1.1rem;font-weight:700}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--gap)}
+.metric{background:var(--surface);border-radius:var(--radius);padding:8px 4px;text-align:center}
+.metric-label{font-size:0.65rem;color:var(--text-dim);text-transform:uppercase}
+.metric-value{font-size:1rem;font-weight:700;margin-top:2px}
+.actions{display:flex;gap:var(--gap);flex-wrap:wrap}
+.btn-action{flex:1;min-width:70px;background:var(--surface2);color:var(--text);border:none;border-radius:var(--radius);padding:8px 4px;font-size:0.78rem;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;position:relative;transition:background 0.15s}
+.btn-action:hover{background:#1a4a7a}
+.btn-action .cost{font-size:0.65rem;color:#ffd700}
+.btn-action.btn-new{background:var(--accent)}
+.btn-action.btn-new:hover{background:#c73652}
+.btn-action.charged{background:#2a6a2a}
+.btn-action .badge{position:absolute;top:4px;right:4px;background:#ffd700;color:#000;border-radius:50%;width:16px;height:16px;font-size:0.65rem;display:flex;align-items:center;justify-content:center;font-weight:700}
+.hidden{display:none!important}
+.board-wrapper{position:relative;width:100%}
+.board{display:grid;gap:var(--gap);background:#0a0a1a;border-radius:var(--radius);padding:var(--gap);width:100%;aspect-ratio:1}
+.board-4{grid-template-columns:repeat(4,1fr)}
+.board-5{grid-template-columns:repeat(5,1fr)}
+.board-6{grid-template-columns:repeat(6,1fr)}
+.tile{border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:clamp(0.7rem,3vw,1.4rem);aspect-ratio:1;cursor:default;transition:transform 0.1s;user-select:none;position:relative;z-index:1}
+.tile-empty{background:#1e1e3a}
+.tile-2{background:#6b3fa0;color:#fff}
+.tile-4{background:#8b5fc0;color:#fff}
+.tile-8{background:#2e7d32;color:#fff}
+.tile-16{background:#43a047;color:#fff}
+.tile-32{background:#e65100;color:#fff}
+.tile-64{background:#ef9a9a;color:#333}
+.tile-128{background:#ffd700;color:#333}
+.tile-256{background:#c8a000;color:#fff}
+.tile-512{background:#1565c0;color:#fff}
+.tile-1024{background:#0d47a1;color:#fff;font-size:clamp(0.55rem,2.5vw,1.1rem)}
+.tile-2048{background:#4a148c;color:#fff;font-size:clamp(0.55rem,2.5vw,1.1rem)}
+.tile-4096,.tile-8192,.tile-16384,.tile-32768,.tile-65536,.tile-131072{background:#1a0030;color:#e040fb;font-size:clamp(0.45rem,2vw,0.9rem)}
+.tile.deletable{outline:2px dashed var(--accent);cursor:pointer;animation:pulse-border 1s infinite}
+@keyframes pulse-border{0%,100%{outline-color:var(--accent)}50%{outline-color:#ffd700}}
+.board.delete-active .tile:not(.tile-empty){position:relative;z-index:11;cursor:pointer}
+.death-select-active .tile:not(.tile-empty){position:relative;z-index:11;cursor:pointer}
+.overlay{position:absolute;inset:0;background:rgba(10,10,26,0.92);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;z-index:10}
+.overlay-content{display:flex;flex-direction:column;align-items:center;gap:12px;padding:24px;text-align:center}
+.overlay-title{font-size:1.6rem;font-weight:900;color:var(--accent)}
+.btn-overlay{width:100%;padding:12px;border:none;border-radius:var(--radius);background:var(--surface2);color:var(--text);font-size:0.95rem;cursor:pointer;transition:background 0.15s}
+.btn-overlay:hover:not(:disabled){background:#1a4a7a}
+.btn-overlay:disabled{opacity:0.4;cursor:not-allowed}
+.btn-overlay.btn-newgame{background:var(--accent)}
+.btn-overlay.btn-heart{background:#6a1a3a}
+.overlay-delete{position:absolute;inset:0;z-index:10;background:rgba(10,10,26,0.6);border-radius:var(--radius);display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:12px;pointer-events:none}
+.delete-banner{font-size:0.95rem;font-weight:700;color:#fff;text-align:center;background:rgba(233,69,96,0.9);padding:8px 16px;border-radius:6px;pointer-events:none}
+.btn-cancel{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;padding:10px 28px;border-radius:6px;cursor:pointer;font-size:0.9rem;font-weight:600;pointer-events:all}
+.btn-cancel:hover{background:rgba(255,255,255,0.25)}
+.overlay-death{position:absolute;inset:0;z-index:8;pointer-events:none}
+.death-banner{position:absolute;top:0;left:0;right:0;background:rgba(233,69,96,0.9);padding:8px 12px;text-align:center;font-weight:700;border-radius:var(--radius) var(--radius) 0 0;pointer-events:all}
+.death-counter{position:absolute;bottom:40px;left:0;right:0;text-align:center;font-weight:700;font-size:1.1rem;pointer-events:none}
+.btn-cancel-death{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);background:rgba(255,255,255,0.15);border:none;color:#fff;padding:6px 20px;border-radius:4px;cursor:pointer;pointer-events:all}
+.tabs{display:flex;gap:var(--gap);background:var(--surface);border-radius:var(--radius);padding:4px}
+.tab{flex:1;padding:8px 4px;border:none;background:transparent;color:var(--text-dim);border-radius:6px;cursor:pointer;font-size:0.8rem;transition:all 0.15s}
+.tab.active{background:var(--surface2);color:var(--text);font-weight:700}
+.tab-content{padding:4px 0}
+.shop{display:flex;flex-direction:column;gap:12px}
+.section-title{font-size:0.85rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-top:8px}
+.shop-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:var(--gap)}
+.shop-item{background:var(--surface);border-radius:var(--radius);padding:12px;display:flex;flex-direction:column;align-items:center;gap:6px}
+.shop-coins{font-size:1.1rem;font-weight:700;color:#ffd700}
+.shop-label{font-size:0.75rem;color:var(--text-dim)}
+.btn-buy{background:var(--accent);color:#fff;border:none;border-radius:6px;padding:6px 14px;cursor:pointer;font-weight:700;font-size:0.85rem}
+.upgrades{display:flex;flex-direction:column;gap:8px}
+.upgrade-item{background:var(--surface);border-radius:var(--radius);padding:12px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.upg-info{font-size:0.82rem;flex:1;line-height:1.4}
+.upg-info b{color:#fff}
+.btn-upg{background:var(--surface2);color:#ffd700;border:none;border-radius:6px;padding:8px 12px;cursor:pointer;font-weight:700;font-size:0.8rem;white-space:nowrap;flex-shrink:0}
+.btn-upg:hover:not(.disabled){background:#1a4a7a}
+.btn-upg.disabled{opacity:0.4;cursor:not-allowed;pointer-events:none}
+.upg-done{color:#4caf50;font-size:0.85rem;white-space:nowrap}
+.achievements{display:flex;flex-direction:column;gap:8px}
+.ach-item{background:var(--surface);border-radius:var(--radius);padding:10px 12px;display:flex;align-items:center;gap:10px}
+.ach-tile{width:44px;height:44px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:0.75rem;flex-shrink:0}
+.ach-label{flex:1;font-size:0.85rem}
+.ach-status{font-size:0.8rem;color:var(--text-dim)}
+.ach-item.collected .ach-status{color:#4caf50}
+.btn-claim{background:var(--accent);color:#fff;border:none;border-radius:6px;padding:8px 14px;cursor:pointer;font-weight:700;font-size:0.85rem}
+.btn-claim.pulse{animation:pulse-btn 1s infinite}
+@keyframes pulse-btn{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
+#toast-container{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;gap:6px;z-index:100;pointer-events:none}
+.toast{background:rgba(30,30,60,0.95);color:#fff;padding:10px 20px;border-radius:20px;font-size:0.9rem;opacity:0;transform:translateY(10px);transition:all 0.3s;white-space:nowrap}
+.toast.show{opacity:1;transform:translateY(0)}
+.achievement-popup{position:absolute;top:8px;left:8px;right:8px;background:rgba(233,69,96,0.95);color:#fff;padding:10px 14px;border-radius:var(--radius);font-size:0.85rem;font-weight:700;text-align:center;z-index:20;animation:slide-down 0.3s ease}
+@keyframes slide-down{from{transform:translateY(-20px);opacity:0}to{transform:translateY(0);opacity:1}}
+@media(max-width:360px){.metrics{grid-template-columns:repeat(2,1fr)}.metric-value{font-size:0.85rem}}
+.lb-wrap{display:flex;flex-direction:column;gap:10px}
+.lb-toggle{display:flex;background:var(--surface);border-radius:var(--radius);padding:3px;gap:4px}
+.lb-toggle-btn{flex:1;padding:7px 4px;border:none;background:transparent;color:var(--text-dim);border-radius:6px;cursor:pointer;font-size:0.8rem;transition:all 0.15s}
+.lb-toggle-btn.active{background:var(--surface2);color:var(--text);font-weight:700}
+.lb-my-rank{background:var(--surface);border-radius:var(--radius);padding:12px 14px;display:flex;align-items:center;justify-content:space-between}
+.lb-my-rank-label{font-size:0.8rem;color:var(--text-dim)}
+.lb-my-rank-val{font-size:1.1rem;font-weight:900;color:#ffd700}
+.lb-table{display:flex;flex-direction:column;gap:4px}
+.lb-row{display:flex;align-items:center;gap:10px;background:var(--surface);border-radius:var(--radius);padding:10px 12px}
+.lb-row.lb-me{background:#0f3460;border:1px solid #ffd700}
+.lb-rank{width:28px;text-align:center;font-weight:900;font-size:0.9rem;color:var(--text-dim);flex-shrink:0}
+.lb-rank.gold{color:#ffd700;font-size:1rem}
+.lb-rank.silver{color:#c0c0c0;font-size:1rem}
+.lb-rank.bronze{color:#cd7f32;font-size:1rem}
+.lb-nick{flex:1;font-size:0.88rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lb-score{font-size:0.88rem;font-weight:700;color:#fff;white-space:nowrap}
+.lb-tile{font-size:0.72rem;color:var(--text-dim);white-space:nowrap}
+.lb-loading{text-align:center;color:var(--text-dim);padding:24px;font-size:0.9rem}
+.lb-empty{text-align:center;color:var(--text-dim);padding:24px;font-size:0.85rem}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast-container"></div>
+<script>
+
+// =============================================
+// UpgradeSystem
+// =============================================
+class UpgradeSystem {
+  static SPAWN_COSTS=[800,1500,2800,4500,7000,10500,15000,22000];
+  static COIN_BONUS_COSTS=[600,1400,2800];
+  static COMBO_COSTS=[500,1000,2000,3500,5000,7000,9000,11000,12500,14000];
+  static AUTO_DELETE_COSTS=[2000,4500,9000];
+  constructor(){this._load()}
+  _load(){const r=localStorage.getItem('upgrades');const d={spawnLevel:0,spawnUnlocked:false,coinBonusLevel:0,comboLevel:0,autoDeleteLevel:0,secondHeart:false,grid5:false,grid6:false};this._data=r?{...d,...JSON.parse(r)}:d}
+  _save(){localStorage.setItem('upgrades',JSON.stringify(this._data))}
+  getSpawnLevel(){return this._data.spawnLevel}
+  isSpawnUnlocked(){return this._data.spawnUnlocked}
+  unlockSpawn(){this._data.spawnUnlocked=true;this._save()}
+  getCoinBonusLevel(){return this._data.coinBonusLevel}
+  getComboLevel(){return this._data.comboLevel}
+  getAutoDeleteLevel(){return this._data.autoDeleteLevel}
+  hasSecondHeart(){return this._data.secondHeart}
+  hasGrid5(){return this._data.grid5}
+  hasGrid6(){return this._data.grid6}
+  getGridSize(){if(this._data.grid6)return 6;if(this._data.grid5)return 5;return 4}
+  spawnUpgradeCost(){const l=this._data.spawnLevel;return l<8?UpgradeSystem.SPAWN_COSTS[l]:null}
+  coinBonusUpgradeCost(){const l=this._data.coinBonusLevel;return l<3?UpgradeSystem.COIN_BONUS_COSTS[l]:null}
+  comboUpgradeCost(){const l=this._data.comboLevel;return l<10?UpgradeSystem.COMBO_COSTS[l]:null}
+  autoDeleteUpgradeCost(){const l=this._data.autoDeleteLevel;return l<3?UpgradeSystem.AUTO_DELETE_COSTS[l]:null}
+  buySpawn(c){if(!this._data.spawnUnlocked)return false;const cost=this.spawnUpgradeCost();if(cost===null)return false;if(!c.spend(cost))return false;this._data.spawnLevel++;this._save();return true}
+  buyCoinBonus(c){const cost=this.coinBonusUpgradeCost();if(cost===null)return false;if(!c.spend(cost))return false;this._data.coinBonusLevel++;this._save();return true}
+  buyCombo(c){const cost=this.comboUpgradeCost();if(cost===null)return false;if(!c.spend(cost))return false;this._data.comboLevel++;this._save();return true}
+  buyAutoDelete(c){const cost=this.autoDeleteUpgradeCost();if(cost===null)return false;if(!c.spend(cost))return false;this._data.autoDeleteLevel++;this._save();return true}
+  buySecondHeart(c){if(this._data.secondHeart)return false;if(!c.spend(1800))return false;this._data.secondHeart=true;this._save();return true}
+  buyGrid5(c){if(this._data.grid5)return false;if(!c.spend(10000))return false;this._data.grid5=true;this._save();return true}
+  buyGrid6(c){if(!this._data.grid5)return false;if(this._data.grid6)return false;if(!c.spend(20000))return false;this._data.grid6=true;this._save();return true}
+}
+
+// =============================================
+// CurrencyManager
+// =============================================
+class CurrencyManager {
+  constructor(u){this.upgradeSystem=u;this._coins=parseInt(localStorage.getItem('coins')||'0',10);this._listeners=[]}
+  get coins(){return this._coins}
+  onChange(fn){this._listeners.push(fn)}
+  _notify(){localStorage.setItem('coins',this._coins);this._listeners.forEach(fn=>fn(this._coins))}
+  calcMergeCoins(v){if(v<16)return 0;return Math.min(8,Math.max(0,Math.floor(Math.log2(v)-3)))}
+  awardMerge(v){let b=this.calcMergeCoins(v);if(b===0)return 0;if(v>=16){const bl=this.upgradeSystem.getCoinBonusLevel();b*=1+([0,0.05,0.10,0.15][bl]||0)}if(v>=128){b*=1+this.upgradeSystem.getComboLevel()*0.105}const e=Math.floor(b);this._coins+=e;this._notify();return e}
+  add(a){this._coins+=a;this._notify()}
+  spend(a){if(this._coins<a)return false;this._coins-=a;this._notify();return true}
+  checkDailyBonus(){const t=new Date().toDateString();if(localStorage.getItem('dailyBonusDate')!==t){localStorage.setItem('dailyBonusDate',t);this.add(50);return true}return false}
+}
+
+// =============================================
+// SpawnSystem
+// =============================================
+class SpawnSystem {
+  static TABLES=[[{v:2,w:90},{v:4,w:10}],[{v:2,w:80},{v:4,w:20}],[{v:2,w:60},{v:4,w:30},{v:8,w:10}],[{v:2,w:40},{v:4,w:40},{v:8,w:20}],[{v:2,w:10},{v:4,w:50},{v:8,w:30},{v:16,w:10}],[{v:4,w:40},{v:8,w:40},{v:16,w:20}],[{v:4,w:20},{v:8,w:50},{v:16,w:30}],[{v:8,w:60},{v:16,w:40}],[{v:8,w:50},{v:16,w:50}]];
+  constructor(u){this.u=u}
+  getSpawnValue(){const t=SpawnSystem.TABLES[this.u.getSpawnLevel()]||SpawnSystem.TABLES[0];const tw=t.reduce((s,e)=>s+e.w,0);let r=Math.random()*tw;for(const e of t){r-=e.w;if(r<=0)return e.v}return t[t.length-1].v}
+}
+
+// =============================================
+// AchievementSystem
+// =============================================
+class AchievementSystem {
+  static BASE={128:20,256:26,512:33,1024:41,2048:50,4096:55,8192:61,16384:67,32768:73};
+  constructor(){this._load();this._listeners=[]}
+  _load(){const r=localStorage.getItem('achievements');const d={currentGoal:128,pendingClaim:false,collected:[],maxReached:0};this._data=r?{...d,...JSON.parse(r)}:d}
+  _save(){localStorage.setItem('achievements',JSON.stringify(this._data))}
+  onChange(fn){this._listeners.push(fn)}
+  _notify(){this._listeners.forEach(fn=>fn(this._data))}
+  getReward(t){if(AchievementSystem.BASE[t])return AchievementSystem.BASE[t];let p=32768,r=73;while(p<t){p*=2;r=Math.round(r*1.1)}return r}
+  notifyTileReached(v){if(v<=this._data.maxReached)return false;this._data.maxReached=v;if(!this._data.pendingClaim&&v>=this._data.currentGoal){this._data.pendingClaim=true;this._save();this._notify();return true}this._save();return false}
+  hasPendingClaim(){return this._data.pendingClaim}
+  getCurrentGoal(){return this._data.currentGoal}
+  getMaxReached(){return this._data.maxReached}
+  getCollected(){return[...this._data.collected]}
+  claim(c){if(!this._data.pendingClaim)return 0;const r=this.getReward(this._data.currentGoal);c.add(r);this._data.collected.push(this._data.currentGoal);this._data.pendingClaim=false;this._data.currentGoal*=2;if(this._data.maxReached>=this._data.currentGoal)this._data.pendingClaim=true;this._save();this._notify();return r}
+}
+
+// =============================================
+// GameBoard
+// =============================================
+class GameBoard {
+  constructor(size,spawn,currency,upgrades,achievements){
+    this.size=size;this.spawnSystem=spawn;this.currency=currency;this.upgrades=upgrades;this.achievements=achievements;
+    this.score=0;this.bestScore=parseInt(localStorage.getItem('bestScore')||'0',10);
+    this.goal=2048;this.mergeCount=0;this.autoDeleteCharge=false;this.secondHeartUsed=false;
+    this._prevGrid=null;this._prevScore=0;
+    this._listeners={move:[],gameOver:[],win:[],autoCharge:[]};
+    this._init();
+  }
+  on(e,fn){if(this._listeners[e])this._listeners[e].push(fn)}
+  _emit(e,d){(this._listeners[e]||[]).forEach(fn=>fn(d))}
+  _init(){
+    this.grid=Array.from({length:this.size},()=>Array(this.size).fill(0));
+    this.score=0;this.goal=2048;this.mergeCount=0;this.autoDeleteCharge=false;
+    this._prevGrid=null;this._prevScore=0;
+    this._spawnTile();this._spawnTile();
+  }
+  reset(){this._init();this._emit('move',this._state())}
+  _state(){return{grid:this.grid.map(r=>[...r]),score:this.score,bestScore:this.bestScore,goal:this.goal,size:this.size,autoDeleteCharge:this.autoDeleteCharge}}
+  _emptyCell(){const c=[];for(let r=0;r<this.size;r++)for(let cc=0;cc<this.size;cc++)if(this.grid[r][cc]===0)c.push([r,cc]);return c}
+  _spawnTile(){const e=this._emptyCell();if(!e.length)return;const[r,c]=e[Math.floor(Math.random()*e.length)];this.grid[r][c]=this.spawnSystem.getSpawnValue()}
+  _saveState(){this._prevGrid=this.grid.map(r=>[...r]);this._prevScore=this.score}
+  undo(c){if(!this._prevGrid)return false;if(!c.spend(40))return false;this.grid=this._prevGrid.map(r=>[...r]);this.score=this._prevScore;this._prevGrid=null;this._emit('move',this._state());return true}
+  move(dir){
+    this._saveState();
+    const rot=this._rotateToLeft(dir);let moved=false;const merges=[];
+    for(let r=0;r<this.size;r++){const res=this._slideLeft(rot[r]);if(res.didMove)moved=true;rot[r]=res.row;merges.push(...res.merges)}
+    if(!moved){this._prevGrid=null;return false}
+    this.grid=this._rotateFromLeft(dir,rot);
+    for(const v of merges){
+      this.score+=v;this.currency.awardMerge(v);this.mergeCount++;
+      const al=this.upgrades.getAutoDeleteLevel();
+      if(al>0){const th=[20,15,10][al-1];if(this.mergeCount%th===0){this.autoDeleteCharge=true;this._emit('autoCharge',true)}}
+      this.achievements.notifyTileReached(v);
+    }
+    if(this.score>this.bestScore){this.bestScore=this.score;localStorage.setItem('bestScore',this.bestScore)}
+    const maxTile=Math.max(...this.grid.flat());
+    if(maxTile>=this.goal){if(this.goal===2048&&!this.upgrades.isSpawnUnlocked())this.upgrades.unlockSpawn();this.goal*=2;this._emit('win',this.goal/2)}
+    this._spawnTile();this._emit('move',this._state());
+    if(this._isGameOver())this._emit('gameOver',this._state());
+    return true;
+  }
+  _slideLeft(row){
+    const f=row.filter(v=>v!==0);const m=[];const merges=[];let i=0;
+    while(i<f.length){if(i+1<f.length&&f[i]===f[i+1]){const v=f[i]*2;m.push(v);merges.push(v);i+=2}else{m.push(f[i]);i++}}
+    while(m.length<row.length)m.push(0);
+    return{row:m,didMove:m.some((v,i)=>v!==row[i]),merges};
+  }
+  _rotateToLeft(d){const g=this.grid,n=this.size;
+    if(d==='left')return g.map(r=>[...r]);
+    if(d==='right')return g.map(r=>[...r].reverse());
+    if(d==='up')return Array.from({length:n},(_,c)=>Array.from({length:n},(__,r)=>g[r][c]));
+    return Array.from({length:n},(_,c)=>Array.from({length:n},(__,r)=>g[n-1-r][c]));
+  }
+  _rotateFromLeft(d,rot){const n=this.size;
+    if(d==='left')return rot.map(r=>[...r]);
+    if(d==='right')return rot.map(r=>[...r].reverse());
+    if(d==='up')return Array.from({length:n},(_,r)=>Array.from({length:n},(__,c)=>rot[c][r]));
+    return Array.from({length:n},(_,r)=>Array.from({length:n},(__,c)=>rot[c][n-1-r]));
+  }
+  _isGameOver(){
+    if(this._emptyCell().length>0)return false;
+    for(let r=0;r<this.size;r++)for(let c=0;c<this.size;c++){const v=this.grid[r][c];if(c+1<this.size&&this.grid[r][c+1]===v)return false;if(r+1<this.size&&this.grid[r+1][c]===v)return false}
+    return true;
+  }
+  deleteTile(r,c){if(this.grid[r][c]===0)return false;this.grid[r][c]=0;this._emit('move',this._state());return true}
+  useAutoDelete(r,c){if(!this.autoDeleteCharge||this.grid[r][c]===0)return false;this.grid[r][c]=0;this.autoDeleteCharge=false;this._emit('autoCharge',false);this._emit('move',this._state());return true}
+  useSecondHeart(){if(!this.upgrades.hasSecondHeart()||this.secondHeartUsed)return false;this.secondHeartUsed=true;return true}
+  getState(){return this._state()}
+}
+
+// =============================================
+// UI
+// =============================================
+class UI {
+  constructor(board,currency,upgrades,achievements){
+    this.board=board;this.currency=currency;this.upgrades=upgrades;this.achievements=achievements;
+    this.activeTab='game';this.deleteMode=false;this.deathDeleteMode=false;
+    this.deathDeleteCount=0;this.deathDeleteRefund=false;
+    this._buildDOM();this._bindEvents();this._render(board.getState());
+    this._renderCoins(currency.coins);this._renderAchievements();
+  }
+  _buildDOM(){
+    document.getElementById('app').innerHTML=`
+      <div class="header">
+        <div class="header-title">2048<span class="plus">+</span></div>
+        <div class="coins-display"><span>🪙</span><span id="coins-count">0</span></div>
+      </div>
+      <div class="metrics">
+        <div class="metric"><div class="metric-label">Счёт</div><div class="metric-value" id="score">0</div></div>
+        <div class="metric"><div class="metric-label">Рекорд</div><div class="metric-value" id="best">0</div></div>
+        <div class="metric"><div class="metric-label">Цель</div><div class="metric-value" id="goal">2048</div></div>
+        <div class="metric"><div class="metric-label">Поле</div><div class="metric-value" id="grid-size">4×4</div></div>
+      </div>
+      <div class="actions">
+        <button class="btn-action" id="btn-undo">↩ Отмена<span class="cost">40🪙</span></button>
+        <button class="btn-action" id="btn-delete">✕ Удалить<span class="cost">80🪙</span></button>
+        <button class="btn-action hidden" id="btn-auto-delete">⚡ Авто-уд.<span class="badge hidden" id="auto-badge">1</span></button>
+        <button class="btn-action btn-new" id="btn-new-game">Новая игра</button>
+      </div>
+      <div class="board-wrapper">
+        <div id="board"></div>
+        <div id="overlay-gameover" class="overlay hidden">
+          <div class="overlay-content">
+            <div class="overlay-title">Игра окончена</div>
+            <div id="overlay-score"></div><div id="overlay-coins"></div>
+            <button class="btn-overlay" id="btn-continue">Удалить 2 плитки <span class="cost">120🪙</span></button>
+            <button class="btn-overlay btn-heart hidden" id="btn-heart">💗 Второе сердце</button>
+            <button class="btn-overlay btn-newgame" id="btn-overlay-new">Новая игра</button>
+          </div>
+        </div>
+        <div id="overlay-delete" class="overlay-delete hidden"></div>
+        <div id="overlay-death-delete" class="overlay-death hidden">
+          <div class="death-banner">Выбери плитки для удаления</div>
+          <div class="death-counter" id="death-counter">Осталось: 2</div>
+          <button class="btn-cancel-death" id="btn-cancel-death">Отмена</button>
+        </div>
+        <div id="achievement-popup" class="achievement-popup hidden"></div>
+      </div>
+      <div class="tabs">
+        <button class="tab active" data-tab="game">Игра</button>
+        <button class="tab" data-tab="shop">Магазин</button>
+        <button class="tab" data-tab="upgrades">Апгрейды</button>
+        <button class="tab" data-tab="rewards">Награды</button>
+        <button class="tab" data-tab="leaderboard">🏆</button>
+      </div>
+      <div id="tab-game" class="tab-content active"></div>
+      <div id="tab-shop" class="tab-content hidden"></div>
+      <div id="tab-upgrades" class="tab-content hidden"></div>
+      <div id="tab-rewards" class="tab-content hidden"></div>
+      <div id="tab-leaderboard" class="tab-content hidden"></div>`;
+    this._renderShop();
+  }
+  _bindEvents(){
+    document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>this._switchTab(b.dataset.tab)));
+    document.getElementById('btn-undo').addEventListener('click',()=>{if(!this.board.undo(this.currency))this.toast('Нет хода для отмены или недостаточно монет')});
+    document.getElementById('btn-delete').addEventListener('click',()=>{if(this.currency.coins<80){this.toast('Недостаточно монет');return}this._enterDeleteMode()});
+    document.getElementById('btn-auto-delete').addEventListener('click',()=>{if(this.board.autoDeleteCharge)this._enterAutoDeleteMode()});
+    document.getElementById('btn-new-game').addEventListener('click',()=>this._newGame());
+    document.getElementById('btn-continue').addEventListener('click',()=>this._startDeathDelete());
+    document.getElementById('btn-heart').addEventListener('click',()=>this._useSecondHeart());
+    document.getElementById('btn-overlay-new').addEventListener('click',()=>this._newGame());
+    document.getElementById('btn-cancel-death').addEventListener('click',()=>this._cancelDeathDelete());
+    document.addEventListener('keydown',e=>{
+      if(this.deleteMode||this.deathDeleteMode)return;
+      if(this.activeTab!=='game')return;
+      const map={ArrowLeft:'left',ArrowRight:'right',ArrowUp:'up',ArrowDown:'down',a:'left',d:'right',w:'up',s:'down',A:'left',D:'right',W:'up',S:'down'};
+      if(map[e.key]){e.preventDefault();this._handleMove(map[e.key])}
+    });
+    let ts=null;
+    const bEl=document.getElementById('board');
+    bEl.addEventListener('touchstart',e=>{ts={x:e.touches[0].clientX,y:e.touches[0].clientY}},{passive:true});
+    bEl.addEventListener('touchend',e=>{
+      if(!ts)return;const dx=e.changedTouches[0].clientX-ts.x,dy=e.changedTouches[0].clientY-ts.y;ts=null;
+      if(Math.abs(dx)<25&&Math.abs(dy)<25)return;
+      if(Math.abs(dx)>Math.abs(dy))this._handleMove(dx>0?'right':'left');else this._handleMove(dy>0?'down':'up');
+    },{passive:true});
+    this.board.on('move',s=>this._render(s));
+    this.board.on('gameOver',s=>{this._render(s);this._showGameOver(s)});
+    this.board.on('win',g=>this.toast(`🎉 Достигнута плитка ${g/2}! Новая цель: ${g}`));
+    this.board.on('autoCharge',c=>this._updateAutoDeleteBtn(c));
+    this.currency.onChange(c=>this._renderCoins(c));
+    this.achievements.onChange(()=>{this._renderAchievements();this._checkAchievementPopup()});
+  }
+  _handleMove(d){if(!document.getElementById('overlay-gameover').classList.contains('hidden'))return;this.board.move(d)}
+  _render(s){
+    const bEl=document.getElementById('board');
+    const wasDel=bEl.classList.contains('delete-active');
+    bEl.className=`board board-${s.size}`;
+    if(wasDel)bEl.classList.add('delete-active');
+    bEl.innerHTML='';
+    for(let r=0;r<s.size;r++)for(let c=0;c<s.size;c++){
+      const v=s.grid[r][c];const el=document.createElement('div');
+      el.className=`tile tile-${v||'empty'}`;el.dataset.r=r;el.dataset.c=c;
+      if(v)el.textContent=v;
+      el.addEventListener('click',()=>{
+        if(this.deleteMode&&v)this._confirmDelete(r,c);
+        else if(this.deathDeleteMode&&v)this._deathDeleteTile(r,c);
+      });
+      bEl.appendChild(el);
+    }
+    document.getElementById('score').textContent=s.score;
+    document.getElementById('best').textContent=s.bestScore;
+    document.getElementById('goal').textContent=s.goal;
+    document.getElementById('grid-size').textContent=`${s.size}×${s.size}`;
+    this._updateAutoDeleteBtn(s.autoDeleteCharge);
+    if(this.deleteMode||this.deathDeleteMode)this._highlightTiles();
+  }
+  _renderCoins(c){document.getElementById('coins-count').textContent=c;const b=document.getElementById('btn-continue');if(b)b.disabled=c<120}
+  _updateAutoDeleteBtn(charged){
+    const btn=document.getElementById('btn-auto-delete'),badge=document.getElementById('auto-badge');
+    const lvl=this.upgrades.getAutoDeleteLevel();
+    if(lvl>0){btn.classList.remove('hidden');if(charged){badge.classList.remove('hidden');btn.classList.add('charged')}else{badge.classList.add('hidden');btn.classList.remove('charged')}}
+    else btn.classList.add('hidden');
+  }
+  _switchTab(tab){
+    this.activeTab=tab;
+    document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
+    document.querySelectorAll('.tab-content').forEach(el=>el.classList.add('hidden'));
+    document.getElementById(`tab-${tab}`).classList.remove('hidden');
+    if(tab==='upgrades')this._renderUpgrades();
+    if(tab==='rewards')this._renderAchievements();
+    if(tab==='leaderboard')this._renderLeaderboard('alltime');
+  }
+  _enterDeleteMode(){
+    this.deleteMode=true;document.getElementById('board').classList.add('delete-active');
+    const ov=document.getElementById('overlay-delete');ov.classList.remove('hidden');
+    ov.innerHTML=`<div class="delete-banner">✕ Выбери плитку для удаления</div><button class="btn-cancel btn-cancel-delete-trigger">Отмена</button>`;
+    ov.querySelector('.btn-cancel-delete-trigger').addEventListener('click',()=>this._exitDeleteMode());
+    this._highlightTiles();
+  }
+  _exitDeleteMode(){
+    this.deleteMode=false;document.getElementById('board').classList.remove('delete-active');
+    document.getElementById('overlay-delete').classList.add('hidden');this._render(this.board.getState());
+  }
+  _confirmDelete(r,c){
+    if(!this.currency.spend(80)){this.toast('Недостаточно монет');this._exitDeleteMode();return}
+    this.board.deleteTile(r,c);this._exitDeleteMode();this.toast('Плитка удалена');
+  }
+  _highlightTiles(){document.querySelectorAll('.tile:not(.tile-empty)').forEach(el=>el.classList.add('deletable'))}
+  _enterAutoDeleteMode(){
+    this.deleteMode=true;document.getElementById('board').classList.add('delete-active');
+    const ov=document.getElementById('overlay-delete');ov.classList.remove('hidden');
+    ov.innerHTML=`<div class="delete-banner">⚡ Авто-удаление: выбери плитку</div><button class="btn-cancel btn-cancel-delete-trigger">Отмена</button>`;
+    ov.querySelector('.btn-cancel-delete-trigger').addEventListener('click',()=>this._exitDeleteMode());
+    this._highlightTiles();
+    document.querySelectorAll('.tile:not(.tile-empty)').forEach(el=>{
+      el.onclick=()=>{const r=+el.dataset.r,c=+el.dataset.c;this.board.useAutoDelete(r,c);this._exitDeleteMode();this.toast('Авто-удаление использовано')};
+    });
+  }
+  _showGameOver(s){
+    const ov=document.getElementById('overlay-gameover');ov.classList.remove('hidden');
+    document.getElementById('overlay-score').textContent=`Счёт: ${s.score}`;
+    document.getElementById('overlay-coins').textContent=`Монеты: ${this.currency.coins}`;
+    document.getElementById('btn-continue').disabled=this.currency.coins<120;
+    const bh=document.getElementById('btn-heart');
+    if(this.upgrades.hasSecondHeart()&&!this.board.secondHeartUsed)bh.classList.remove('hidden');else bh.classList.add('hidden');
+  }
+  _hideGameOver(){document.getElementById('overlay-gameover').classList.add('hidden')}
+  _startDeathDelete(){
+    if(this.currency.coins<120)return;
+    this.currency.spend(120);this.deathDeleteMode=true;this.deathDeleteCount=2;this.deathDeleteRefund=true;
+    const ov=document.getElementById('overlay-gameover');ov.style.pointerEvents='none';ov.style.opacity='0.3';
+    document.getElementById('board').classList.add('death-select-active');
+    document.getElementById('overlay-death-delete').classList.remove('hidden');
+    document.getElementById('death-counter').textContent='Осталось: 2';this._highlightTiles();
+  }
+  _deathDeleteTile(r,c){
+    this.board.deleteTile(r,c);this.deathDeleteCount--;
+    document.getElementById('death-counter').textContent=`Осталось: ${this.deathDeleteCount}`;
+    if(this.deathDeleteCount<=0)this._finishDeathDelete();
+  }
+  _finishDeathDelete(){
+    this.deathDeleteMode=false;this.deathDeleteRefund=false;
+    document.getElementById('board').classList.remove('death-select-active');
+    document.getElementById('overlay-death-delete').classList.add('hidden');this._hideGameOver();
+    const ov=document.getElementById('overlay-gameover');ov.style.pointerEvents='';ov.style.opacity='';
+    this._render(this.board.getState());this.toast('Игра продолжается!');
+  }
+  _cancelDeathDelete(){
+    this.deathDeleteMode=false;
+    if(this.deathDeleteRefund){this.currency.add(120);this.deathDeleteRefund=false}
+    document.getElementById('board').classList.remove('death-select-active');
+    document.getElementById('overlay-death-delete').classList.add('hidden');
+    const ov=document.getElementById('overlay-gameover');ov.style.pointerEvents='';ov.style.opacity='';
+    this._render(this.board.getState());
+  }
+  _useSecondHeart(){
+    if(!this.board.useSecondHeart())return;this._hideGameOver();
+    this.deathDeleteMode=true;this.deathDeleteCount=1;this.deathDeleteRefund=false;
+    document.getElementById('board').classList.add('death-select-active');
+    document.getElementById('overlay-death-delete').classList.remove('hidden');
+    document.getElementById('death-counter').textContent='Осталось: 1';
+    document.querySelector('.death-banner').textContent='💗 Второе сердце: выбери плитку';
+    this._highlightTiles();
+  }
+  _newGame(){
+    this._hideGameOver();this.deleteMode=false;this.deathDeleteMode=false;
+    document.getElementById('overlay-delete').classList.add('hidden');
+    document.getElementById('overlay-death-delete').classList.add('hidden');
+    document.getElementById('board').classList.remove('delete-active','death-select-active');
+    const ov=document.getElementById('overlay-gameover');ov.style.pointerEvents='';ov.style.opacity='';
+    this.board.reset();
+  }
+  _renderShop(){
+    document.getElementById('tab-shop').innerHTML=`
+      <div class="shop">
+        <h3 class="section-title">Пакеты монет</h3>
+        <div class="shop-grid">
+          <div class="shop-item"><div class="shop-coins">200🪙</div><div class="shop-label">Стартер</div><button class="btn-buy" onclick="alert('Демо: +200 монет')">$0.99</button></div>
+          <div class="shop-item"><div class="shop-coins">800🪙</div><div class="shop-label">Базовый</div><button class="btn-buy" onclick="alert('Демо: +800 монет')">$4.99</button></div>
+          <div class="shop-item"><div class="shop-coins">2400🪙</div><div class="shop-label">Премиум</div><button class="btn-buy" onclick="alert('Демо: +2400 монет')">$9.99</button></div>
+          <div class="shop-item"><div class="shop-coins">7000🪙</div><div class="shop-label">Мега</div><button class="btn-buy" onclick="alert('Демо: +7000 монет')">$19.99</button></div>
+        </div>
+      </div>`;
+  }
+  _renderUpgrades(){
+    const el=document.getElementById('tab-upgrades'),u=this.upgrades,coins=this.currency.coins;
+    const sl=u.getSpawnLevel(),su=u.isSpawnUnlocked(),sc=u.spawnUpgradeCost();
+    const cbl=u.getCoinBonusLevel(),cbc=u.coinBonusUpgradeCost();
+    const cl=u.getComboLevel(),cc=u.comboUpgradeCost();
+    const al=u.getAutoDeleteLevel(),ac=u.autoDeleteUpgradeCost();
+    el.innerHTML=`<div class="upgrades">
+      <h3 class="section-title">Расширение поля</h3>
+      <div class="upgrade-item"><div class="upg-info"><b>Поле 5×5</b><br>25 клеток вместо 16</div>${u.hasGrid5()?'<span class="upg-done">✓ Куплено</span>':`<button class="btn-upg${coins<10000?' disabled':''}" id="btn-grid5">10 000🪙</button>`}</div>
+      <div class="upgrade-item"><div class="upg-info"><b>Поле 6×6</b><br>36 клеток. Требует 5×5</div>${u.hasGrid6()?'<span class="upg-done">✓ Куплено</span>':`<button class="btn-upg${(!u.hasGrid5()||coins<20000)?' disabled':''}" id="btn-grid6">20 000🪙</button>`}</div>
+      <h3 class="section-title">Шансы плиток ${!su?'🔒 (достигни 2048)':`(ур. ${sl}/8)`}</h3>
+      <div class="upgrade-item"><div class="upg-info">Улучшить шансы появления плиток</div>${sl>=8?'<span class="upg-done">✓ Максимум</span>':`<button class="btn-upg${(!su||coins<sc)?' disabled':''}" id="btn-spawn">${su?sc+'🪙':'Заблокировано'}</button>`}</div>
+      <h3 class="section-title">Монеты и прогрессия</h3>
+      <div class="upgrade-item"><div class="upg-info"><b>Бонус к монетам</b> (ур. ${cbl}/3)<br>+5/10/15% к монетам за слияния ≥16</div>${cbl>=3?'<span class="upg-done">✓ Максимум</span>':`<button class="btn-upg${coins<cbc?' disabled':''}" id="btn-coin-bonus">${cbc}🪙</button>`}</div>
+      <div class="upgrade-item"><div class="upg-info"><b>Комбо-монеты</b> (ур. ${cl}/10)<br>×${(1+cl*0.105).toFixed(2)} к монетам за слияния ≥128</div>${cl>=10?'<span class="upg-done">✓ Максимум</span>':`<button class="btn-upg${coins<cc?' disabled':''}" id="btn-combo">${cc}🪙</button>`}</div>
+      <div class="upgrade-item"><div class="upg-info"><b>Авто-удаление</b> (ур. ${al}/3)<br>Заряд каждые ${[20,15,10][al]||10} слияний</div>${al>=3?'<span class="upg-done">✓ Максимум</span>':`<button class="btn-upg${coins<ac?' disabled':''}" id="btn-auto-del">${ac}🪙</button>`}</div>
+      <div class="upgrade-item"><div class="upg-info"><b>Второе сердце</b><br>1 бесплатное удаление при поражении за сессию</div>${u.hasSecondHeart()?'<span class="upg-done">✓ Куплено</span>':`<button class="btn-upg${coins<1800?' disabled':''}" id="btn-heart-upg">1 800🪙</button>`}</div>
+    </div>`;
+    const b=(id,fn)=>{const btn=document.getElementById(id);if(btn&&!btn.classList.contains('disabled'))btn.addEventListener('click',fn)};
+    b('btn-grid5',()=>{if(u.buyGrid5(this.currency)){this.toast('Поле 5×5 куплено! Начни новую игру.');this._renderUpgrades()}else this.toast('Недостаточно монет')});
+    b('btn-grid6',()=>{if(u.buyGrid6(this.currency)){this.toast('Поле 6×6 куплено! Начни новую игру.');this._renderUpgrades()}else this.toast('Недостаточно монет')});
+    b('btn-spawn',()=>{if(u.buySpawn(this.currency)){this.toast('Шансы плиток улучшены!');this._renderUpgrades()}else this.toast('Недостаточно монет')});
+    b('btn-coin-bonus',()=>{if(u.buyCoinBonus(this.currency)){this.toast('Бонус к монетам улучшен!');this._renderUpgrades()}else this.toast('Недостаточно монет')});
+    b('btn-combo',()=>{if(u.buyCombo(this.currency)){this.toast('Комбо-монеты улучшены!');this._renderUpgrades()}else this.toast('Недостаточно монет')});
+    b('btn-auto-del',()=>{if(u.buyAutoDelete(this.currency)){this.toast('Авто-удаление улучшено!');this._renderUpgrades();this._updateAutoDeleteBtn(this.board.autoDeleteCharge)}else this.toast('Недостаточно монет')});
+    b('btn-heart-upg',()=>{if(u.buySecondHeart(this.currency)){this.toast('Второе сердце куплено!');this._renderUpgrades()}else this.toast('Недостаточно монет')});
+  }
+  async _renderLeaderboard(mode){
+    const el=document.getElementById('tab-leaderboard');
+    const myNick=localStorage.getItem('nearAccountId')||'';
+    el.innerHTML=`<div class="lb-wrap">
+      <div class="lb-toggle">
+        <button class="lb-toggle-btn${mode==='alltime'?' active':''}" id="lb-btn-alltime">За всё время</button>
+        <button class="lb-toggle-btn${mode==='weekly'?' active':''}" id="lb-btn-weekly">Эта неделя</button>
+      </div>
+      <div id="lb-my-rank-block" class="lb-my-rank hidden">
+        <span class="lb-my-rank-label">Твоё место</span>
+        <span class="lb-my-rank-val" id="lb-my-rank-val">—</span>
+      </div>
+      <div id="lb-list" class="lb-table"><div class="lb-loading">Загрузка...</div></div>
+    </div>`;
+    document.getElementById('lb-btn-alltime').addEventListener('click',()=>this._renderLeaderboard('alltime'));
+    document.getElementById('lb-btn-weekly').addEventListener('click',()=>this._renderLeaderboard('weekly'));
+    let rows=[];
+    try{rows=mode==='alltime'?await db.getAlltimeLeaderboard():await db.getWeeklyLeaderboard()}
+    catch(e){document.getElementById('lb-list').innerHTML='<div class="lb-empty">Ошибка загрузки. Проверь соединение.</div>';return}
+    if(!rows.length){document.getElementById('lb-list').innerHTML='<div class="lb-empty">Пока нет записей. Сыграй партию!</div>';return}
+    const myIdx=rows.findIndex(r=>r.nickname===myNick);
+    if(myIdx>=0){document.getElementById('lb-my-rank-block').classList.remove('hidden');document.getElementById('lb-my-rank-val').textContent=`#${myIdx+1}`}
+    const rl=(i)=>{if(i===0)return'<span class="lb-rank gold">🥇</span>';if(i===1)return'<span class="lb-rank silver">🥈</span>';if(i===2)return'<span class="lb-rank bronze">🥉</span>';return`<span class="lb-rank">${i+1}</span>`};
+    document.getElementById('lb-list').innerHTML=rows.map((r,i)=>`<div class="lb-row${r.nickname===myNick?' lb-me':''}">${rl(i)}<span class="lb-nick">${r.nickname===myNick?'👤 '+r.nickname:r.nickname}</span><span class="lb-tile">🎯${r.max_tile||'—'}</span><span class="lb-score">${r.best_score.toLocaleString()}</span></div>`).join('');
+  }
+  _renderAchievements(){
+    const el=document.getElementById('tab-rewards'),col=this.achievements.getCollected();
+    const goal=this.achievements.getCurrentGoal(),pending=this.achievements.hasPendingClaim(),max=this.achievements.getMaxReached();
+    let h='<div class="achievements">';
+    if(col.length){h+='<h3 class="section-title">Собранные</h3>';col.forEach(t=>{h+=`<div class="ach-item collected"><span class="ach-tile tile-${t}">${t}</span><span class="ach-label">Плитка ${t}</span><span class="ach-status">✓ Получено</span></div>`})}
+    h+=`<h3 class="section-title">Активная цель</h3><div class="ach-item"><span class="ach-tile tile-${goal}">${goal}</span><span class="ach-label">Плитка ${goal} → +${this.achievements.getReward(goal)}🪙</span>${pending?`<button class="btn-claim pulse" id="btn-claim">Забрать</button>`:'<span class="ach-status">Ещё не достигнута</span>'}</div>`;
+    const ng=goal*2;if(max<ng)h+=`<h3 class="section-title">Следующая</h3><div class="ach-item"><span class="ach-tile tile-${ng}">${ng}</span><span class="ach-label">Плитка ${ng} → +${this.achievements.getReward(ng)}🪙</span><span class="ach-status">Следующая</span></div>`;
+    h+='</div>';el.innerHTML=h;
+    const cb=document.getElementById('btn-claim');
+    if(cb)cb.addEventListener('click',()=>{const r=this.achievements.claim(this.currency);this.toast(`+${r}🪙 за достижение!`);this._renderAchievements()});
+  }
+  _checkAchievementPopup(){
+    if(!this.achievements.hasPendingClaim())return;
+    const goal=this.achievements.getCurrentGoal();
+    const p=document.getElementById('achievement-popup');
+    p.textContent=`🏆 Достигнута плитка ${goal}! Забери награду во вкладке Награды`;
+    p.classList.remove('hidden');setTimeout(()=>p.classList.add('hidden'),3000);
+  }
+  toast(msg){
+    const c=document.getElementById('toast-container'),el=document.createElement('div');
+    el.className='toast';el.textContent=msg;c.appendChild(el);
+    setTimeout(()=>el.classList.add('show'),10);
+    setTimeout(()=>{el.classList.remove('show');setTimeout(()=>el.remove(),300)},2200);
+  }
+}
+
+// =============================================
+// Supabase DB
+// =============================================
+const SUPABASE_URL='https://egchnyodvvewcmkucijx.supabase.co';
+const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVnY2hueW9kdnZld2Nta3VjaWp4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQzNDg0NjcsImV4cCI6MjA4OTkyNDQ2N30.cP4tiZzHpuNbCHnW1dmwDoee0fU2F-Ksve6-kA29irQ';
+
+function getWeekStart(){const n=new Date(),d=n.getDay(),diff=d===0?-6:1-d,m=new Date(n);m.setDate(n.getDate()+diff);return m.toISOString().split('T')[0]}
+
+class DB {
+  constructor(){this._ready=false;this._client=null;this._load()}
+  async _load(){
+    await new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';s.onload=res;s.onerror=rej;document.head.appendChild(s)});
+    this._client=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+    this._ready=true;
+  }
+  async _wait(){if(this._ready)return;await new Promise(r=>{const t=setInterval(()=>{if(this._ready){clearInterval(t);r()}},50)})}
+  async getOrCreatePlayer(accountId){
+    await this._wait();
+    const{data:ex}=await this._client.from('players').select('*').eq('nickname',accountId).maybeSingle();
+    if(ex){await this._client.from('players').update({last_seen_at:new Date().toISOString()}).eq('id',ex.id);return ex}
+    const{data:cr,error}=await this._client.from('players').insert({nickname:accountId}).select().single();
+    if(error)throw error;return cr;
+  }
+  async savePlayer(id,{coins,bestScore,maxTile,upgrades,achievements}){
+    await this._wait();
+    await this._client.from('players').update({coins,best_score:bestScore,max_tile:maxTile,upgrades,achievements,last_seen_at:new Date().toISOString()}).eq('id',id);
+  }
+  async submitScore(playerId,nickname,score,maxTile){
+    await this._wait();
+    const{data:at}=await this._client.from('leaderboard_alltime').select('best_score').eq('player_id',playerId).maybeSingle();
+    if(!at||score>at.best_score)await this._client.from('leaderboard_alltime').upsert({player_id:playerId,nickname,best_score:score,max_tile:maxTile,updated_at:new Date().toISOString()},{onConflict:'player_id'});
+    const ws=getWeekStart();
+    const{data:wk}=await this._client.from('leaderboard_weekly').select('best_score').eq('player_id',playerId).eq('week_start',ws).maybeSingle();
+    if(!wk||score>wk.best_score)await this._client.from('leaderboard_weekly').upsert({player_id:playerId,nickname,best_score:score,max_tile:maxTile,week_start:ws,updated_at:new Date().toISOString()},{onConflict:'player_id, week_start'});
+  }
+  async getAlltimeLeaderboard(limit=50){
+    await this._wait();
+    const{data}=await this._client.from('leaderboard_alltime').select('nickname,best_score,max_tile').order('best_score',{ascending:false}).limit(limit);
+    return data||[];
+  }
+  async getWeeklyLeaderboard(limit=50){
+    await this._wait();
+    const{data}=await this._client.from('leaderboard_weekly').select('nickname,best_score,max_tile').eq('week_start',getWeekStart()).order('best_score',{ascending:false}).limit(limit);
+    return data||[];
+  }
+}
+
+const db=new DB();
+
+// =============================================
+// NEAR Wallet Login (MyNearWallet redirect flow)
+// Работает в любом браузере без SDK.
+// HOT Wallet тоже поддерживает этот стандарт.
+// =============================================
+
+// Адрес кошелька для редиректа (mainnet)
+const WALLET_URL='https://app.mynearwallet.com';
+
+function getNearLoginUrl(){
+  // После входа кошелёк редиректит обратно с ?account_id=xxx&public_key=yyy
+  const successUrl=window.location.href.split('?')[0]+'?near_login=1';
+  const failureUrl=window.location.href.split('?')[0]+'?near_login=0';
+  return `${WALLET_URL}/login/?success_url=${encodeURIComponent(successUrl)}&failure_url=${encodeURIComponent(failureUrl)}`;
+}
+
+// Проверяем, вернулись ли мы после логина
+function checkNearCallback(){
+  const params=new URLSearchParams(window.location.search);
+  if(params.get('near_login')==='1'){
+    const accountId=params.get('account_id');
+    // Чистим URL
+    window.history.replaceState({},'',window.location.pathname);
+    return accountId||null;
+  }
+  if(params.get('near_login')==='0'){
+    window.history.replaceState({},'',window.location.pathname);
+    return false; // явный отказ
+  }
+  return undefined; // не было редиректа
+}
+
+function showWalletScreen(){
+  return new Promise((resolve)=>{
+    const overlay=document.createElement('div');
+    overlay.id='wallet-overlay';
+    overlay.style.cssText='position:fixed;inset:0;background:#1a1a2e;display:flex;align-items:center;justify-content:center;z-index:9999;flex-direction:column;gap:20px;padding:24px';
+    overlay.innerHTML=`
+      <div style="font-size:2.8rem;font-weight:900;color:#fff;letter-spacing:-1px">2048<span style="color:#e94560">+</span></div>
+      <div style="color:#aaa;font-size:0.95rem;text-align:center;max-width:280px;line-height:1.5">Подключи NEAR кошелёк для сохранения прогресса и участия в турнирах</div>
+      <button id="btn-connect-wallet" style="background:#e94560;color:#fff;border:none;border-radius:10px;padding:14px 32px;font-size:1rem;font-weight:700;cursor:pointer;width:100%;max-width:300px;display:flex;align-items:center;justify-content:center;gap:8px">
+        <span style="font-size:1.2rem">🔗</span> Войти через NEAR кошелёк
+      </button>
+      <div style="color:#666;font-size:0.78rem;text-align:center;max-width:260px">MyNearWallet · HOT Wallet · Meteor · и другие</div>
+      <button id="btn-skip-wallet" style="background:transparent;color:#555;border:1px solid #333;border-radius:10px;padding:10px 24px;font-size:0.85rem;cursor:pointer;width:100%;max-width:300px">
+        Играть без входа
+      </button>`;
+    document.body.appendChild(overlay);
+
+    document.getElementById('btn-connect-wallet').addEventListener('click',()=>{
+      // Сохраняем флаг что инициировали вход (для file:// — предупреждение)
+      if(window.location.protocol==='file:'){
+        alert('Для входа через кошелёк нужно открыть игру через веб-сервер (Vercel, localhost и т.д.).\n\nПри открытии через file:// редирект не работает.');
+        return;
+      }
+      window.location.href=getNearLoginUrl();
+    });
+
+    document.getElementById('btn-skip-wallet').addEventListener('click',()=>{
+      overlay.remove();resolve(null);
+    });
+  });
+}
+
+// =============================================
+// Восстановить прогресс из БД в localStorage
+// =============================================
+function applyPlayerData(player){
+  const localCoins=parseInt(localStorage.getItem('coins')||'0');
+  if((player.coins||0)>localCoins)localStorage.setItem('coins',player.coins);
+  const localBest=parseInt(localStorage.getItem('bestScore')||'0');
+  if((player.best_score||0)>localBest)localStorage.setItem('bestScore',player.best_score);
+  if(player.upgrades&&Object.keys(player.upgrades).length>0)localStorage.setItem('upgrades',JSON.stringify(player.upgrades));
+  if(player.achievements&&Object.keys(player.achievements).length>0){
+    const localAch=JSON.parse(localStorage.getItem('achievements')||'{}');
+    const merged={...localAch,...player.achievements};
+    if((player.achievements.maxReached||0)>(localAch.maxReached||0))merged.maxReached=player.achievements.maxReached;
+    localStorage.setItem('achievements',JSON.stringify(merged));
+  }
+}
+
+// =============================================
+// Init
+// =============================================
+async function init(){
+  let accountId=localStorage.getItem('nearAccountId');
+
+  // Проверяем редирект от кошелька
+  const callbackResult=checkNearCallback();
+  if(callbackResult===false){
+    // Пользователь отказался — ничего не делаем, идём дальше без аккаунта
+  } else if(callbackResult){
+    // Успешный вход
+    accountId=callbackResult;
+    localStorage.setItem('nearAccountId',accountId);
+  }
+
+  if(!accountId){
+    const result=await showWalletScreen();
+    if(result){
+      accountId=result;
+      localStorage.setItem('nearAccountId',accountId);
+    }
+  }
+
+  let playerId=null;
+  let playerNickname=accountId||('guest_'+Math.random().toString(36).slice(2,8));
+
+  if(accountId){
+    try{
+      const player=await db.getOrCreatePlayer(accountId);
+      playerId=player.id;
+      playerNickname=player.nickname;
+      applyPlayerData(player);
+    }catch(e){console.warn('DB unavailable, playing offline')}
+  }
+
+  const upgrades=new UpgradeSystem();
+  const currency=new CurrencyManager(upgrades);
+  const spawn=new SpawnSystem(upgrades);
+  const achievements=new AchievementSystem();
+  const board=new GameBoard(upgrades.getGridSize(),spawn,currency,upgrades,achievements);
+  const ui=new UI(board,currency,upgrades,achievements);
+
+  if(currency.checkDailyBonus())ui.toast('🎁 Ежедневный бонус: +50 монет!');
+  if(accountId)ui.toast(`👋 ${accountId}`);
+
+  const syncToDB=()=>{
+    if(!playerId)return;
+    db.savePlayer(playerId,{
+      coins:currency.coins,
+      bestScore:parseInt(localStorage.getItem('bestScore')||'0'),
+      maxTile:achievements.getMaxReached(),
+      upgrades:JSON.parse(localStorage.getItem('upgrades')||'{}'),
+      achievements:JSON.parse(localStorage.getItem('achievements')||'{}'),
+    });
+  };
+
+  const origSave=upgrades._save.bind(upgrades);
+  upgrades._save=()=>{origSave();syncToDB()};
+
+  board.on('gameOver',async(state)=>{
+    if(!playerId)return;
+    const maxTile=Math.max(...state.grid.flat());
+    db.savePlayer(playerId,{coins:currency.coins,bestScore:state.bestScore,maxTile,upgrades:JSON.parse(localStorage.getItem('upgrades')||'{}'),achievements:JSON.parse(localStorage.getItem('achievements')||'{}')});
+    db.submitScore(playerId,playerNickname,state.score,maxTile);
+  });
+
+  setInterval(syncToDB,30000);
+
+  // Кнопка выхода в шапке
+  if(accountId){
+    const coinsEl=document.querySelector('.coins-display');
+    if(coinsEl){
+      const btn=document.createElement('button');
+      btn.title=`${accountId} — выйти`;
+      btn.style.cssText='background:none;border:none;color:#666;cursor:pointer;font-size:0.8rem;padding:0 2px;margin-left:4px';
+      btn.textContent='⏏';
+      btn.addEventListener('click',()=>{
+        if(!confirm(`Выйти из ${accountId}?`))return;
+        localStorage.removeItem('nearAccountId');
+        location.reload();
+      });
+      coinsEl.appendChild(btn);
+    }
+  }
+}
+
+init();
+</script>
+</body>
+</html>

@@ -932,23 +932,23 @@ function showWalletScreen(){
       return;
     }
 
-    connector.on('wallet:signIn',(t)=>{
+    // Слушаем signIn ОДИН РАЗ — {once:true} предотвращает накопление обработчиков
+    const onSignIn=(t)=>{
       const accountId=t.accounts[0].accountId;
       window._nearConnector=connector;
       statusEl.textContent='✓ '+accountId;
       setTimeout(()=>{overlay.remove();resolve(accountId)},600);
-    });
+    };
+    connector.on('wallet:signIn',onSignIn);
 
-    document.getElementById('btn-connect-wallet').addEventListener('click',async()=>{
+    document.getElementById('btn-connect-wallet').addEventListener('click',()=>{
       statusEl.textContent='Открываем выбор кошелька...';
-      try{
-        await connector.connect();
-      }catch(e){
-        statusEl.textContent='';
-      }
+      // НЕ await — connect() только открывает модал, результат через событие
+      connector.connect().catch(()=>{});
     });
 
     document.getElementById('btn-skip-wallet').addEventListener('click',()=>{
+      connector.off&&connector.off('wallet:signIn',onSignIn);
       overlay.remove();resolve(null);
     });
   });

@@ -305,7 +305,6 @@ class UI {
         <button class="btn-action" id="btn-undo">↩ Отмена<span class="cost">40🪙</span></button>
         <button class="btn-action" id="btn-delete">✕ Удалить<span class="cost">80🪙</span></button>
         <button class="btn-action hidden" id="btn-auto-delete">⚡ Авто-уд.<span class="badge hidden" id="auto-badge">1</span></button>
-        <button class="btn-action btn-new" id="btn-new-game">Новая игра</button>
       </div>
       <div class="board-wrapper">
         <div id="board"></div>
@@ -345,7 +344,6 @@ class UI {
     document.getElementById('btn-undo').addEventListener('click',()=>{if(!this.board.undo(this.currency))this.toast('Нет хода для отмены или недостаточно монет')});
     document.getElementById('btn-delete').addEventListener('click',()=>{if(this.currency.coins<80){this.toast('Недостаточно монет');return}this._enterDeleteMode()});
     document.getElementById('btn-auto-delete').addEventListener('click',()=>{if(this.board.autoDeleteCharge)this._enterAutoDeleteMode()});
-    document.getElementById('btn-new-game').addEventListener('click',()=>this._newGame());
     document.getElementById('btn-continue').addEventListener('click',()=>this._startDeathDelete());
     document.getElementById('btn-heart').addEventListener('click',()=>this._useSecondHeart());
     document.getElementById('btn-overlay-new').addEventListener('click',()=>this._newGame());
@@ -524,59 +522,51 @@ class UI {
 
   async _buyLives(lives,priceHuman){
     const statusEl=document.getElementById('shop-status');
+    // Защита от двойного нажатия
+    if(this._buying){return}
+    this._buying=true;
+
     statusEl.style.color='#888';
     const accountId=localStorage.getItem('nearAccountId');
-    if(!accountId){statusEl.textContent='Войди через кошелёк для покупки';return}
-    if(!window._nearConnector){statusEl.textContent='Кошелёк не подключён. Перезайди в аккаунт.';return}
-    if(!window._playerId){statusEl.textContent='Нет данных игрока. Перезайди.';return}
+    if(!accountId){statusEl.textContent='Войди через кошелёк для покупки';this._buying=false;return}
+    if(!window._nearConnector){statusEl.textContent='Кошелёк не подключён. Перезайди в аккаунт.';this._buying=false;return}
+    if(!window._playerId){statusEl.textContent='Нет данных игрока. Перезайди.';this._buying=false;return}
 
     statusEl.textContent='Открываем кошелёк...';
     let txHash=null;
     try{
-      const wallet=await window._nearConnector.wallet();
-      const amount=(BigInt(priceHuman)*BigInt('1'+'0'.repeat(18))).toString();
+      // Таймаут на получение wallet — 15 сек
+      const walletPromise=window._nearConnector.wallet();
+      const timeoutPromise=new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),15000));
+      const wallet=await Promise.race([walletPromise,timeoutPromise]);
 
-      // Сначала регистрируем получателя (storage_deposit) если нужно,
-      // затем делаем ft_transfer в одной транзакции
+      const amount=(BigInt(priceHuman)*BigInt('1'+'0'.repeat(18))).toString();
       const result=await wallet.signAndSendTransaction({
         receiverId:DARAI_TOKEN,
         actions:[
-          // storage_deposit для 2048game.near (0.00125 NEAR = 1250000000000000000000000 yocto)
-          // Если уже зарегистрирован — лишние средства вернутся
-          {
-            type:'FunctionCall',
-            params:{
-              methodName:'storage_deposit',
-              args:{account_id:'2048game.near',registration_only:true},
-              gas:'10000000000000',
-              deposit:'1250000000000000000000'
-            }
-          },
-          {
-            type:'FunctionCall',
-            params:{
-              methodName:'ft_transfer',
-              args:{receiver_id:'2048game.near',amount,memo:`buy_lives_${lives}`},
-              gas:'20000000000000',
-              deposit:'1'
-            }
-          }
+          {type:'FunctionCall',params:{methodName:'storage_deposit',args:{account_id:'2048game.near',registration_only:true},gas:'10000000000000',deposit:'1250000000000000000000'}},
+          {type:'FunctionCall',params:{methodName:'ft_transfer',args:{receiver_id:'2048game.near',amount,memo:`buy_lives_${lives}`},gas:'20000000000000',deposit:'1'}}
         ]
       });
       txHash=result?.transaction?.hash||result?.transaction_outcome?.id||null;
-      if(!txHash){statusEl.textContent='Транзакция отправлена, но хэш не получен. Обратись в поддержку.';return}
+      if(!txHash){statusEl.textContent='Транзакция отправлена, но хэш не получен.';this._buying=false;return}
     }catch(e){
-      statusEl.textContent='Транзакция отменена.';
+      if(e.message==='timeout'){
+        statusEl.textContent='Кошелёк не ответил. Попробуй ещё раз.';
+      } else {
+        statusEl.textContent='Транзакция отменена.';
+      }
       console.error('tx error',e);
+      this._buying=false;
       return;
     }
 
     statusEl.textContent='Проверяем транзакцию...';
     try{
       const used=await db.isTxUsed(txHash);
-      if(used){statusEl.textContent='Эта транзакция уже была использована.';return}
+      if(used){statusEl.textContent='Эта транзакция уже была использована.';this._buying=false;return}
       const verified=await this._verifyTx(txHash,accountId,priceHuman);
-      if(!verified){statusEl.textContent='Транзакция не прошла проверку. Обратись в поддержку.';return}
+      if(!verified){statusEl.textContent='Транзакция не прошла проверку. Обратись в поддержку.';this._buying=false;return}
       const amount=(BigInt(priceHuman)*BigInt('1'+'0'.repeat(18))).toString();
       await db.recordPurchase(window._playerId,accountId,txHash,lives,amount);
       LivesSystem.addBought(lives);
@@ -588,6 +578,7 @@ class UI {
       statusEl.textContent='Ошибка верификации. Жизни не начислены.';
       console.error('verify error',e);
     }
+    this._buying=false;
   }
 
   async _verifyTx(txHash,senderAccountId,expectedAmountHuman){
@@ -1107,18 +1098,6 @@ async function init(){
   // Отрисовываем жизни
   renderLivesUI();
 
-  // Тратим жизнь ТОЛЬКО при явном старте новой игры (не при загрузке страницы)
-  const origReset=board.reset.bind(board);
-  board.reset=()=>{
-    if(LivesSystem.getCount()<=0){ui.toast('❤️ Нет жизней! Жди сброса.');return}
-    LivesSystem.spend();
-    renderLivesUI();
-    syncToDB();
-    origReset();
-  };
-
-  // НЕ тратим жизнь при загрузке — жизнь тратится только при нажатии "Новая игра"
-
   if(currency.checkDailyBonus())ui.toast('🎁 Ежедневный бонус: +50 монет!');
   if(accountId)ui.toast(`👋 Подключён: ${accountId}`);
 
@@ -1134,6 +1113,16 @@ async function init(){
       lives:livesData.count,
       livesResetDate:livesData.lastReset||'',
     });
+  };
+
+  // Жизнь тратится только при явном старте новой игры (кнопка в game over)
+  const origReset=board.reset.bind(board);
+  board.reset=()=>{
+    if(LivesSystem.getCount()<=0){ui.toast('❤️ Нет жизней! Жди сброса.');return}
+    LivesSystem.spend();
+    renderLivesUI();
+    syncToDB();
+    origReset();
   };
 
   // Синхронизация при покупке апгрейда

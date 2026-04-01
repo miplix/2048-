@@ -534,7 +534,7 @@ class UI {
   _renderShop(){
     const el=document.getElementById('tab-shop');
     // Иконка DARAI — используем ft_metadata icon (data URI из контракта)
-    const daraiIcon=`<img src="https://raw.githubusercontent.com/Darai-token/assets/main/logo.png" style="width:1em;height:1em;border-radius:50%;vertical-align:middle;object-fit:cover;display:inline-block;margin-right:3px" onerror="this.src='https://nearblocks.io/images/tokenimages/darai.tkn.near.jpg';this.onerror=null">`;
+    const daraiIcon=`<img src="https://i.ibb.co/8gR4k77f/darai.png" style="width:1em;height:1em;border-radius:50%;vertical-align:middle;object-fit:cover;display:inline-block;margin-right:3px">`;
     const rows=LIFE_PACKS.map(p=>{
       const price=daraiPrice(p.lives,p.discount);
       const priceStr=price.toLocaleString();

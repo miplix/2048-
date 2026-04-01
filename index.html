@@ -628,47 +628,42 @@ class UI {
       // Ждём немного — транзакция может ещё не проиндексироваться
       await new Promise(r=>setTimeout(r,2000));
 
-      // Ищем транзакцию по хэшу напрямую через NearBlocks
-      const url=`https://api.nearblocks.io/v1/txns/${txHash}`;
-      const resp=await fetch(url,{headers:{'Accept':'application/json'}});
-      if(!resp.ok){
-        // Fallback: ищем в ft-txns получателя
-        return await this._verifyTxFallback(txHash,senderAccountId,expectedAmountHuman);
-      }
-      const data=await resp.json();
-      const tx=data.txns?.[0]||data.txn||data;
+      const url='https://api.sendler.xyz/history/ft-transfers/?wallet_id=2048game.near&direction=in&symbol=darai.tkn.near&limit=50';
+      const resp=await fetch(url,{
+        headers:{
+          'accept':'application/json',
+          'X-API-Key':'j9mwYHIkRsmhM7dOoJy9yBSEdSZSWtBw02BOIGy3jzk'
+        }
+      });
+      if(!resp.ok)return true; // API недоступен — доверяем
 
-      // Проверяем статус
-      const status=tx?.outcomes?.status??tx?.status??true;
-      if(status===false||status==='FAILURE')return false;
+      const data=await resp.json();
+      const items=data.items||[];
+
+      // Ищем транзакцию по хэшу
+      const tx=items.find(t=>t.tx_hash===txHash);
+      if(!tx)return true; // не нашли — возможно ещё не проиндексировалась, доверяем
 
       // Проверяем отправителя
-      const signer=tx?.signer_account_id||tx?.transaction?.signer_id||'';
-      if(signer&&signer!==senderAccountId)return false;
+      if(tx.sender_id!==senderAccountId)return false;
 
-      return true; // хэш существует и транзакция успешна — достаточно
-    }catch(e){
-      console.error('NearBlocks verify error',e);
-      // При ошибке верификации — доверяем транзакции (токены уже списаны)
+      // Проверяем получателя
+      if(tx.receiver_id!=='2048game.near')return false;
+
+      // Проверяем сумму (amount в yocto = expectedAmountHuman * 10^18)
+      const expectedAmount=(BigInt(expectedAmountHuman)*BigInt('1'+'0'.repeat(18))).toString();
+      if(tx.amount!==expectedAmount)return false;
+
       return true;
+    }catch(e){
+      console.error('sendler verify error',e);
+      return true; // при ошибке — доверяем
     }
   }
 
   async _verifyTxFallback(txHash,senderAccountId,expectedAmountHuman){
-    try{
-      // Ищем среди ft-txns получателя (2048game.near)
-      const url=`https://api.nearblocks.io/v1/account/2048game.near/ft-txns?contract=${DARAI_TOKEN}&limit=50`;
-      const resp=await fetch(url,{headers:{'Accept':'application/json'}});
-      if(!resp.ok)return true; // не можем проверить — доверяем
-      const data=await resp.json();
-      const txns=data.txns||[];
-      const tx=txns.find(t=>t.transaction_hash===txHash);
-      if(!tx)return true; // не нашли — возможно ещё не проиндексировалась, доверяем
-      if(tx.outcomes?.status===false)return false;
-      return true;
-    }catch(e){
-      return true; // при ошибке — доверяем
-    }
+    // Оставлен как резерв, не используется
+    return true;
   }
   _renderUpgrades(){
     const el=document.getElementById('tab-upgrades'),u=this.upgrades,coins=this.currency.coins;

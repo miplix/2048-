@@ -782,13 +782,18 @@ class UI {
       <div id="admin-status" style="color:#888;font-size:0.8rem;text-align:center;min-height:20px"></div>
     </div>`;
 
-    // Добавить место
+    const _renumberRows=(container)=>{
+      container.querySelectorAll('.admin-reward-row').forEach((row,i)=>{
+        row.dataset.place=i+1;
+        row.querySelector('span').textContent=`Место ${i+1}`;
+      });
+    };
+
     listEl.querySelectorAll('.btn-add-reward').forEach(btn=>{
       btn.addEventListener('click',()=>{
         const type=btn.dataset.type;
         const container=document.getElementById(`admin-${type}-rewards`);
-        const existing=container.querySelectorAll('.admin-reward-row');
-        const nextPlace=existing.length+1;
+        const nextPlace=container.querySelectorAll('.admin-reward-row').length+1;
         const div=document.createElement('div');
         div.className='admin-reward-row';
         div.style.cssText='display:flex;align-items:center;gap:8px;margin:4px 0';
@@ -799,50 +804,41 @@ class UI {
       });
     });
 
-    // Удалить место
-    const _renumberRows=(container)=>{
-      container.querySelectorAll('.admin-reward-row').forEach((row,i)=>{
-        row.dataset.place=i+1;
-        row.querySelector('span').textContent=`Место ${i+1}`;
-      });
-    };
     listEl.querySelectorAll('.btn-del-reward').forEach(btn=>{
       btn.addEventListener('click',()=>{
         const row=btn.closest('.admin-reward-row');
         const container=row.parentElement;
-        row.remove();
-        _renumberRows(container);
+        row.remove();_renumberRows(container);
       });
     });
 
-    // Сохранить
+    // Используем {once:true} — обработчик срабатывает только один раз, не накапливается
     document.getElementById('btn-save-rewards').addEventListener('click',async()=>{
       const s=document.getElementById('admin-status');s.textContent='Сохраняем...';s.style.color='#888';
       try{
-        // Сначала удаляем все старые записи для обоих типов
         await db.deleteTournamentRewards('score');
         await db.deleteTournamentRewards('lives');
-        // Записываем новые
         for(const row of listEl.querySelectorAll('.admin-reward-row')){
           const coins=parseInt(row.querySelector('input').value)||0;
           if(coins>0)await db.setTournamentReward(row.dataset.type,parseInt(row.dataset.place),coins);
         }
         s.style.color='#4caf50';s.textContent='✓ Сохранено!';
       }catch(e){s.style.color='#e94560';s.textContent='Ошибка.';console.error(e)}
-    });
+    },{once:true});
 
     document.getElementById('btn-finish-score').addEventListener('click',async()=>{
-      if(!confirm('Завершить турнир по счёту?'))return;
+      if(!confirm('Завершить турнир по счёту? Таблица будет очищена.'))return;
       const s=document.getElementById('admin-status');s.textContent='Завершаем...';
       try{const n=await db.finishTournament('score');s.style.color='#4caf50';s.textContent=`✓ Завершён. Наград: ${n}`}
       catch(e){s.style.color='#e94560';s.textContent='Ошибка: '+e.message}
-    });
+    },{once:true});
+
     document.getElementById('btn-finish-lives').addEventListener('click',async()=>{
-      if(!confirm('Завершить турнир по играм?'))return;
+      if(!confirm('Завершить турнир по играм? Таблица будет очищена.'))return;
       const s=document.getElementById('admin-status');s.textContent='Завершаем...';
       try{const n=await db.finishTournament('lives');s.style.color='#4caf50';s.textContent=`✓ Завершён. Наград: ${n}`}
       catch(e){s.style.color='#e94560';s.textContent='Ошибка: '+e.message}
-    });
+    },{once:true});
   }
   _renderAchievements(){
     const el=document.getElementById('tab-rewards'),col=this.achievements.getCollected();
@@ -986,11 +982,11 @@ class DB {
         coins_awarded:rw.coins_reward
       });
     }
-    // Полный сброс таблицы турнира
+    // Полный сброс — удаляем все записи (gt на дату гарантирует что WHERE есть, RLS пропускает)
     if(type==='score'){
-      await this._client.from('leaderboard_weekly').delete().neq('id','00000000-0000-0000-0000-000000000000');
+      await this._client.from('leaderboard_weekly').delete().gt('created_at','1970-01-01');
     } else {
-      await this._client.from('tournament_lives').delete().neq('id','00000000-0000-0000-0000-000000000000');
+      await this._client.from('tournament_lives').delete().gt('created_at','1970-01-01');
     }
     return topRows.length;
   }

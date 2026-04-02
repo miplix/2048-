@@ -756,31 +756,90 @@ class UI {
     let scoreR=[],livesR=[];
     try{scoreR=await db.getTournamentRewards('score');livesR=await db.getTournamentRewards('lives')}
     catch(e){listEl.innerHTML='<div class="lb-empty">Ошибка.</div>';return}
-    const rows=(type,arr)=>arr.map(r=>`<div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="width:60px;color:var(--text-dim);font-size:0.8rem">Место ${r.place}</span><input type="number" value="${r.coins_reward}" min="0" style="width:80px;background:var(--surface2);border:1px solid #333;color:#fff;border-radius:4px;padding:4px 8px;font-size:0.85rem" data-type="${type}" data-place="${r.place}"><span style="color:var(--text-dim);font-size:0.75rem">🪙</span></div>`).join('');
+
+    const buildRows=(type,arr)=>{
+      const id=`admin-${type}-rewards`;
+      const rowsHtml=arr.map(r=>`
+        <div class="admin-reward-row" style="display:flex;align-items:center;gap:8px;margin:4px 0" data-type="${type}" data-place="${r.place}">
+          <span style="width:60px;color:var(--text-dim);font-size:0.8rem">Место ${r.place}</span>
+          <input type="number" value="${r.coins_reward}" min="0" style="width:80px;background:var(--surface2);border:1px solid #333;color:#fff;border-radius:4px;padding:4px 8px;font-size:0.85rem">
+          <button class="btn-del-reward" style="background:var(--accent);border:none;color:#fff;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:0.8rem">✕</button>
+        </div>`).join('');
+      return`<div id="${id}">${rowsHtml}</div>
+        <button class="btn-add-reward" data-type="${type}" style="background:var(--surface2);border:none;color:#ffd700;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:0.8rem;margin-top:4px">+ Добавить место</button>`;
+    };
+
     listEl.innerHTML=`<div style="display:flex;flex-direction:column;gap:16px;padding:8px 0">
-      <div><div class="section-title">🏅 По счёту</div>${rows('score',scoreR)}</div>
-      <div><div class="section-title">❤️ По играм</div>${rows('lives',livesR)}</div>
-      <button id="btn-save-rewards" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:10px;cursor:pointer;font-weight:700">Сохранить награды</button>
+      <div><div class="section-title">🏅 По счёту</div>${buildRows('score',scoreR)}</div>
+      <div><div class="section-title">❤️ По играм</div>${buildRows('lives',livesR)}</div>
+      <button id="btn-save-rewards" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:10px;cursor:pointer;font-weight:700">Сохранить все награды</button>
       <div style="display:flex;gap:8px">
-        <button id="btn-finish-score" style="flex:1;background:#1565c0;color:#fff;border:none;border-radius:8px;padding:8px;cursor:pointer;font-size:0.8rem">Завершить турнир по счёту</button>
-        <button id="btn-finish-lives" style="flex:1;background:#6a1a3a;color:#fff;border:none;border-radius:8px;padding:8px;cursor:pointer;font-size:0.8rem">Завершить турнир по играм</button>
+        <button id="btn-finish-score" style="flex:1;background:#1565c0;color:#fff;border:none;border-radius:8px;padding:8px;cursor:pointer;font-size:0.8rem">Завершить по счёту</button>
+        <button id="btn-finish-lives" style="flex:1;background:#6a1a3a;color:#fff;border:none;border-radius:8px;padding:8px;cursor:pointer;font-size:0.8rem">Завершить по играм</button>
       </div>
       <div id="admin-status" style="color:#888;font-size:0.8rem;text-align:center;min-height:20px"></div>
     </div>`;
+
+    // Добавить место
+    listEl.querySelectorAll('.btn-add-reward').forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        const type=btn.dataset.type;
+        const container=document.getElementById(`admin-${type}-rewards`);
+        const existing=container.querySelectorAll('.admin-reward-row');
+        const nextPlace=existing.length+1;
+        const div=document.createElement('div');
+        div.className='admin-reward-row';
+        div.style.cssText='display:flex;align-items:center;gap:8px;margin:4px 0';
+        div.dataset.type=type;div.dataset.place=nextPlace;
+        div.innerHTML=`<span style="width:60px;color:var(--text-dim);font-size:0.8rem">Место ${nextPlace}</span><input type="number" value="0" min="0" style="width:80px;background:var(--surface2);border:1px solid #333;color:#fff;border-radius:4px;padding:4px 8px;font-size:0.85rem"><button class="btn-del-reward" style="background:var(--accent);border:none;color:#fff;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:0.8rem">✕</button>`;
+        container.appendChild(div);
+        div.querySelector('.btn-del-reward').addEventListener('click',()=>{div.remove();_renumberRows(container)});
+      });
+    });
+
+    // Удалить место
+    const _renumberRows=(container)=>{
+      container.querySelectorAll('.admin-reward-row').forEach((row,i)=>{
+        row.dataset.place=i+1;
+        row.querySelector('span').textContent=`Место ${i+1}`;
+      });
+    };
+    listEl.querySelectorAll('.btn-del-reward').forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        const row=btn.closest('.admin-reward-row');
+        const container=row.parentElement;
+        row.remove();
+        _renumberRows(container);
+      });
+    });
+
+    // Сохранить
     document.getElementById('btn-save-rewards').addEventListener('click',async()=>{
       const s=document.getElementById('admin-status');s.textContent='Сохраняем...';s.style.color='#888';
-      try{for(const inp of listEl.querySelectorAll('input[data-type]'))await db.setTournamentReward(inp.dataset.type,parseInt(inp.dataset.place),parseInt(inp.value)||0);s.style.color='#4caf50';s.textContent='✓ Сохранено!'}
-      catch(e){s.style.color='#e94560';s.textContent='Ошибка.'}
+      try{
+        // Сначала удаляем все старые записи для обоих типов
+        await db.deleteTournamentRewards('score');
+        await db.deleteTournamentRewards('lives');
+        // Записываем новые
+        for(const row of listEl.querySelectorAll('.admin-reward-row')){
+          const coins=parseInt(row.querySelector('input').value)||0;
+          if(coins>0)await db.setTournamentReward(row.dataset.type,parseInt(row.dataset.place),coins);
+        }
+        s.style.color='#4caf50';s.textContent='✓ Сохранено!';
+      }catch(e){s.style.color='#e94560';s.textContent='Ошибка.';console.error(e)}
     });
+
     document.getElementById('btn-finish-score').addEventListener('click',async()=>{
       if(!confirm('Завершить турнир по счёту?'))return;
       const s=document.getElementById('admin-status');s.textContent='Завершаем...';
-      try{const n=await db.finishTournament('score');s.style.color='#4caf50';s.textContent=`✓ Завершён. Наград: ${n}`}catch(e){s.style.color='#e94560';s.textContent='Ошибка: '+e.message}
+      try{const n=await db.finishTournament('score');s.style.color='#4caf50';s.textContent=`✓ Завершён. Наград: ${n}`}
+      catch(e){s.style.color='#e94560';s.textContent='Ошибка: '+e.message}
     });
     document.getElementById('btn-finish-lives').addEventListener('click',async()=>{
       if(!confirm('Завершить турнир по играм?'))return;
       const s=document.getElementById('admin-status');s.textContent='Завершаем...';
-      try{const n=await db.finishTournament('lives');s.style.color='#4caf50';s.textContent=`✓ Завершён. Наград: ${n}`}catch(e){s.style.color='#e94560';s.textContent='Ошибка: '+e.message}
+      try{const n=await db.finishTournament('lives');s.style.color='#4caf50';s.textContent=`✓ Завершён. Наград: ${n}`}
+      catch(e){s.style.color='#e94560';s.textContent='Ошибка: '+e.message}
     });
   }
   _renderAchievements(){
@@ -878,6 +937,11 @@ class DB {
     await this._wait();
     const{data}=await this._client.from('tournament_rewards').select('place,coins_reward').eq('tournament_type',type).order('place',{ascending:true});
     return data||[];
+  }
+
+  async deleteTournamentRewards(type){
+    await this._wait();
+    await this._client.from('tournament_rewards').delete().eq('tournament_type',type);
   }
 
   async setTournamentReward(type,place,coins){

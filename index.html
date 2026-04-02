@@ -1324,14 +1324,10 @@ async function init(){
   if(currency.checkDailyBonus())ui.toast('🎁 Ежедневный бонус: +50 монет!');
   if(accountId)ui.toast(`👋 Подключён: ${accountId}`);
 
-  // Показываем уведомления о наградах турнира
+  // Показываем уведомления о наградах турнира (монеты уже начислены в БД при finishTournament)
   if(playerId){
     db.getNotifications(playerId).then(async(notes)=>{
       for(const n of notes){
-        // Начисляем монеты если ещё не начислены (coins_awarded > 0)
-        if(n.coins_awarded>0){
-          currency.add(n.coins_awarded);
-        }
         ui.toast(n.message);
         await db.markNotificationSeen(n.id);
       }

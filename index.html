@@ -394,7 +394,11 @@ class UI {
         else this.toast('Нет хода для отмены');
       }
     });
-    document.getElementById('btn-delete').addEventListener('click',()=>{if(this.currency.coins<80){this.toast('Недостаточно монет');return}this._enterDeleteMode()});
+    document.getElementById('btn-delete').addEventListener('click',()=>{
+      if(this.deleteMode){this._exitDeleteMode();return}
+      if(this.currency.coins<80){this.toast('Недостаточно монет');return}
+      this._enterDeleteMode()
+    });
     document.getElementById('btn-auto-delete').addEventListener('click',()=>{if(this.board.autoDeleteCharge)this._enterAutoDeleteMode()});
     document.getElementById('btn-continue').addEventListener('click',()=>this._startDeathDelete());
     document.getElementById('btn-heart').addEventListener('click',()=>this._useSecondHeart());

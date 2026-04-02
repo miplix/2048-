@@ -972,10 +972,18 @@ class DB {
       topRows=data||[];
     }
     const rewards=await this.getTournamentRewards(type);
+    let awarded=0;
     for(let i=0;i<topRows.length;i++){
       const rw=rewards.find(r=>r.place===i+1);
       if(!rw||rw.coins_reward<=0)continue;
       const row=topRows[i];
+      // Проверяем что уведомление ещё не было создано (защита от двойного начисления)
+      const{data:existing}=await this._client.from('tournament_notifications')
+        .select('id').eq('player_id',row.player_id)
+        .ilike('message',`%Турнир завершён%${i+1} место%`)
+        .gte('created_at',new Date(Date.now()-3600000).toISOString()) // за последний час
+        .maybeSingle();
+      if(existing)continue; // уже начислено
       const{data:p}=await this._client.from('players').select('coins').eq('id',row.player_id).single();
       if(p)await this._client.from('players').update({coins:(p.coins||0)+rw.coins_reward}).eq('id',row.player_id);
       await this._client.from('tournament_notifications').insert({
@@ -983,15 +991,15 @@ class DB {
         message:`🏆 Турнир завершён! Ты занял ${i+1} место и получил +${rw.coins_reward} монет!`,
         coins_awarded:rw.coins_reward
       });
+      awarded++;
     }
-    // Сброс: обнуляем значения всех участников (UPDATE работает через anon key, DELETE — нет)
-    // Записи с нулевыми значениями не отображаются в турнирных таблицах
+    // Сброс: обнуляем значения всех участников
     if(type==='score'){
       await this._client.from('leaderboard_weekly').update({best_score:0,max_tile:0}).gt('best_score',0);
     } else {
       await this._client.from('tournament_lives').update({games_played:0}).gt('games_played',0);
     }
-    return topRows.length;
+    return awarded;
   }
 
   // Проверить что tx_hash ещё не использован

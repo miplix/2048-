@@ -474,8 +474,7 @@ class UI {
   _enterDeleteMode(){
     this.deleteMode=true;document.getElementById('board').classList.add('delete-active');
     const ov=document.getElementById('overlay-delete');ov.classList.remove('hidden');
-    ov.innerHTML=`<div class="delete-banner">✕ Выбери плитку для удаления</div><button class="btn-cancel btn-cancel-delete-trigger">Отмена</button>`;
-    ov.querySelector('.btn-cancel-delete-trigger').addEventListener('click',()=>this._exitDeleteMode());
+    ov.innerHTML=`<div class="delete-banner">✕ Выбери плитку — повтори нажатие для отмены</div>`;
     this._highlightTiles();
   }
   _exitDeleteMode(){
@@ -490,8 +489,7 @@ class UI {
   _enterAutoDeleteMode(){
     this.deleteMode=true;document.getElementById('board').classList.add('delete-active');
     const ov=document.getElementById('overlay-delete');ov.classList.remove('hidden');
-    ov.innerHTML=`<div class="delete-banner">⚡ Авто-удаление: выбери плитку</div><button class="btn-cancel btn-cancel-delete-trigger">Отмена</button>`;
-    ov.querySelector('.btn-cancel-delete-trigger').addEventListener('click',()=>this._exitDeleteMode());
+    ov.innerHTML=`<div class="delete-banner">⚡ Авто-удаление: выбери плитку</div>`;
     this._highlightTiles();
     document.querySelectorAll('.tile:not(.tile-empty)').forEach(el=>{
       el.onclick=()=>{const r=+el.dataset.r,c=+el.dataset.c;this.board.useAutoDelete(r,c);this._exitDeleteMode();this.toast('Авто-удаление использовано')};

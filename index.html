@@ -57,7 +57,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .btn-overlay:disabled{opacity:0.4;cursor:not-allowed}
 .btn-overlay.btn-newgame{background:var(--accent)}
 .btn-overlay.btn-heart{background:#6a1a3a}
-.overlay-delete{position:absolute;inset:0;z-index:10;background:rgba(10,10,26,0.6);border-radius:var(--radius);display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:12px;pointer-events:none}
+.overlay-delete{position:absolute;inset:0;z-index:10;background:rgba(10,10,26,0.6);border-radius:var(--radius);display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:12px;gap:10px;pointer-events:none}
 .delete-banner{font-size:0.95rem;font-weight:700;color:#fff;text-align:center;background:rgba(233,69,96,0.9);padding:8px 16px;border-radius:6px;pointer-events:none}
 .btn-cancel{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;padding:10px 28px;border-radius:6px;cursor:pointer;font-size:0.9rem;font-weight:600;pointer-events:all}
 .btn-cancel:hover{background:rgba(255,255,255,0.25)}
@@ -385,7 +385,15 @@ class UI {
   }
   _bindEvents(){
     document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>this._switchTab(b.dataset.tab)));
-    document.getElementById('btn-undo').addEventListener('click',()=>{if(!this.board.undo(this.currency))this.toast('Нет хода для отмены или недостаточно монет')});
+    document.getElementById('btn-undo').addEventListener('click',()=>{
+      if(this._undoCooldown)return;
+      this._undoCooldown=true;
+      setTimeout(()=>{this._undoCooldown=false},300);
+      if(!this.board.undo(this.currency)){
+        if(this.currency.coins<40)this.toast('Недостаточно монет (нужно 40🪙)');
+        else this.toast('Нет хода для отмены');
+      }
+    });
     document.getElementById('btn-delete').addEventListener('click',()=>{if(this.currency.coins<80){this.toast('Недостаточно монет');return}this._enterDeleteMode()});
     document.getElementById('btn-auto-delete').addEventListener('click',()=>{if(this.board.autoDeleteCharge)this._enterAutoDeleteMode()});
     document.getElementById('btn-continue').addEventListener('click',()=>this._startDeathDelete());

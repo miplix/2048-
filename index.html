@@ -437,7 +437,12 @@ class UI {
     this._updateAutoDeleteBtn(s.autoDeleteCharge);
     if(this.deleteMode||this.deathDeleteMode)this._highlightTiles();
   }
-  _renderCoins(c){document.getElementById('coins-count').textContent=c;const b=document.getElementById('btn-continue');if(b)b.disabled=c<120}
+  _renderCoins(c){
+    // Деноминация 2: отображаем с точностью до 0.01
+    const display=Number.isInteger(c)?c:(Math.round(c*100)/100).toFixed(2).replace(/\.?0+$/,'');
+    document.getElementById('coins-count').textContent=display;
+    const b=document.getElementById('btn-continue');if(b)b.disabled=c<120
+  }
   _updateAutoDeleteBtn(charged){
     const btn=document.getElementById('btn-auto-delete'),badge=document.getElementById('auto-badge');
     const lvl=this.upgrades.getAutoDeleteLevel();
@@ -679,7 +684,10 @@ class UI {
       <div class="upgrade-item"><div class="upg-info"><b>Поле 5×5</b><br>25 клеток вместо 16</div>${u.hasGrid5()?'<span class="upg-done">✓ Куплено</span>':`<button class="btn-upg${coins<10000?' disabled':''}" id="btn-grid5">10 000🪙</button>`}</div>
       <div class="upgrade-item"><div class="upg-info"><b>Поле 6×6</b><br>36 клеток. Требует 5×5</div>${u.hasGrid6()?'<span class="upg-done">✓ Куплено</span>':`<button class="btn-upg${(!u.hasGrid5()||coins<20000)?' disabled':''}" id="btn-grid6">20 000🪙</button>`}</div>
       <h3 class="section-title">Шансы плиток ${!su?'🔒 (достигни 2048)':`(ур. ${sl}/8)`}</h3>
-      <div class="upgrade-item"><div class="upg-info">Улучшить шансы появления плиток</div>${sl>=8?'<span class="upg-done">✓ Максимум</span>':`<button class="btn-upg${(!su||coins<sc)?' disabled':''}" id="btn-spawn">${su?sc+'🪙':'Заблокировано'}</button>`}</div>
+      <div class="upgrade-item"><div class="upg-info">Улучшить шансы появления плиток<br>
+        <span style="font-size:0.7rem;color:#666">${sl===0?'Сейчас: 2×90%, 4×10%':sl===1?'Сейчас: 2×80%, 4×20%':sl===2?'Сейчас: 2×60%, 4×30%, 8×10%':sl===3?'Сейчас: 2×40%, 4×40%, 8×20%':sl===4?'Сейчас: 2×10%, 4×50%, 8×30%, 16×10%':sl===5?'Сейчас: 4×40%, 8×40%, 16×20%':sl===6?'Сейчас: 4×20%, 8×50%, 16×30%':sl===7?'Сейчас: 8×60%, 16×40%':'Сейчас: 8×50%, 16×50%'}</span>
+        ${sl<8?`<span style="font-size:0.7rem;color:#4caf50"> → ${sl===0?'2×80%, 4×20%':sl===1?'2×60%, 4×30%, 8×10%':sl===2?'2×40%, 4×40%, 8×20%':sl===3?'2×10%, 4×50%, 8×30%, 16×10%':sl===4?'4×40%, 8×40%, 16×20%':sl===5?'4×20%, 8×50%, 16×30%':sl===6?'8×60%, 16×40%':'8×50%, 16×50%'}</span>`:''}
+      </div>${sl>=8?'<span class="upg-done">✓ Максимум</span>':`<button class="btn-upg${(!su||coins<sc)?' disabled':''}" id="btn-spawn">${su?sc+'🪙':'Заблокировано'}</button>`}</div>
       <h3 class="section-title">Монеты и прогрессия</h3>
       <div class="upgrade-item"><div class="upg-info"><b>Бонус к монетам</b> (ур. ${cbl}/3)<br>+5/10/15% к монетам за слияния ≥16</div>${cbl>=3?'<span class="upg-done">✓ Максимум</span>':`<button class="btn-upg${coins<cbc?' disabled':''}" id="btn-coin-bonus">${cbc}🪙</button>`}</div>
       <div class="upgrade-item"><div class="upg-info"><b>Комбо-монеты</b> (ур. ${cl}/10)<br>×${(1+cl*0.105).toFixed(2)} к монетам за слияния ≥128</div>${cl>=10?'<span class="upg-done">✓ Максимум</span>':`<button class="btn-upg${coins<cc?' disabled':''}" id="btn-combo">${cc}🪙</button>`}</div>
@@ -699,20 +707,14 @@ class UI {
     const el=document.getElementById('tab-leaderboard');
     const myNick=localStorage.getItem('nearAccountId')||'';
     el.innerHTML=`<div class="lb-wrap">
-      <div class="lb-toggle">
-        <button class="lb-toggle-btn${mode==='alltime'?' active':''}" id="lb-btn-alltime">За всё время</button>
-        <button class="lb-toggle-btn${mode==='weekly'?' active':''}" id="lb-btn-weekly">Эта неделя</button>
-      </div>
       <div id="lb-my-rank-block" class="lb-my-rank hidden">
         <span class="lb-my-rank-label">Твоё место</span>
         <span class="lb-my-rank-val" id="lb-my-rank-val">—</span>
       </div>
       <div id="lb-list" class="lb-table"><div class="lb-loading">Загрузка...</div></div>
     </div>`;
-    document.getElementById('lb-btn-alltime').addEventListener('click',()=>this._renderLeaderboard('alltime'));
-    document.getElementById('lb-btn-weekly').addEventListener('click',()=>this._renderLeaderboard('weekly'));
     let rows=[];
-    try{rows=mode==='alltime'?await db.getAlltimeLeaderboard():await db.getWeeklyLeaderboard()}
+    try{rows=await db.getAlltimeLeaderboard()}
     catch(e){document.getElementById('lb-list').innerHTML='<div class="lb-empty">Ошибка загрузки. Проверь соединение.</div>';return}
     if(!rows.length){document.getElementById('lb-list').innerHTML='<div class="lb-empty">Пока нет записей. Сыграй партию!</div>';return}
     const myIdx=rows.findIndex(r=>r.nickname===myNick);
@@ -962,13 +964,13 @@ class DB {
 
   async finishTournament(type){
     await this._wait();
-    const ws=getWeekStart();
     let topRows=[];
     if(type==='score'){
-      const{data}=await this._client.from('leaderboard_weekly').select('player_id,nickname,best_score').eq('week_start',ws).order('best_score',{ascending:false}).limit(10);
+      // Берём топ без фильтра по неделе — все накопленные данные
+      const{data}=await this._client.from('leaderboard_weekly').select('player_id,nickname,best_score').order('best_score',{ascending:false}).limit(10);
       topRows=data||[];
     } else {
-      const{data}=await this._client.from('tournament_lives').select('player_id,nickname,games_played').eq('week_start',ws).order('games_played',{ascending:false}).limit(10);
+      const{data}=await this._client.from('tournament_lives').select('player_id,nickname,games_played').order('games_played',{ascending:false}).limit(10);
       topRows=data||[];
     }
     const rewards=await this.getTournamentRewards(type);
@@ -984,10 +986,11 @@ class DB {
         coins_awarded:rw.coins_reward
       });
     }
+    // Полный сброс таблицы турнира
     if(type==='score'){
-      await this._client.from('leaderboard_weekly').delete().eq('week_start',ws);
+      await this._client.from('leaderboard_weekly').delete().neq('id','00000000-0000-0000-0000-000000000000');
     } else {
-      await this._client.from('tournament_lives').delete().eq('week_start',ws);
+      await this._client.from('tournament_lives').delete().neq('id','00000000-0000-0000-0000-000000000000');
     }
     return topRows.length;
   }

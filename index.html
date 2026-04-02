@@ -744,6 +744,9 @@ class UI {
       if(mode==='score'){rows=await db.getWeeklyLeaderboard(50);rewards=await db.getTournamentRewards('score')}
       else{rows=await db.getLivesTournament(50);rewards=await db.getTournamentRewards('lives')}
     }catch(e){listEl.innerHTML='<div class="lb-empty">Ошибка загрузки.</div>';return}
+    // Скрываем участников с нулевыми значениями (сброшенные после турнира)
+    if(mode==='score') rows=rows.filter(r=>r.best_score>0);
+    else rows=rows.filter(r=>r.games_played>0);
     if(!rows.length){listEl.innerHTML='<div class="lb-empty">Пока нет участников. Играй!</div>';return}
     const rewardMap={};rewards.forEach(r=>{rewardMap[r.place]=r.coins_reward});
     const rl2=(i)=>{if(i===0)return'<span class="lb-rank gold">🥇</span>';if(i===1)return'<span class="lb-rank silver">🥈</span>';if(i===2)return'<span class="lb-rank bronze">🥉</span>';return`<span class="lb-rank">${i+1}</span>`};
@@ -962,11 +965,10 @@ class DB {
     await this._wait();
     let topRows=[];
     if(type==='score'){
-      // Берём топ без фильтра по неделе — все накопленные данные
-      const{data}=await this._client.from('leaderboard_weekly').select('player_id,nickname,best_score').order('best_score',{ascending:false}).limit(10);
+      const{data}=await this._client.from('leaderboard_weekly').select('player_id,nickname,best_score').gt('best_score',0).order('best_score',{ascending:false}).limit(10);
       topRows=data||[];
     } else {
-      const{data}=await this._client.from('tournament_lives').select('player_id,nickname,games_played').order('games_played',{ascending:false}).limit(10);
+      const{data}=await this._client.from('tournament_lives').select('player_id,nickname,games_played').gt('games_played',0).order('games_played',{ascending:false}).limit(10);
       topRows=data||[];
     }
     const rewards=await this.getTournamentRewards(type);
@@ -982,11 +984,12 @@ class DB {
         coins_awarded:rw.coins_reward
       });
     }
-    // Полный сброс — удаляем все записи (gt на дату гарантирует что WHERE есть, RLS пропускает)
+    // Сброс: обнуляем значения всех участников (UPDATE работает через anon key, DELETE — нет)
+    // Записи с нулевыми значениями не отображаются в турнирных таблицах
     if(type==='score'){
-      await this._client.from('leaderboard_weekly').delete().gt('created_at','1970-01-01');
+      await this._client.from('leaderboard_weekly').update({best_score:0,max_tile:0}).gt('best_score',0);
     } else {
-      await this._client.from('tournament_lives').delete().gt('created_at','1970-01-01');
+      await this._client.from('tournament_lives').update({games_played:0}).gt('games_played',0);
     }
     return topRows.length;
   }

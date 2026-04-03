@@ -564,14 +564,19 @@ class UI {
     let packs=[];
     try{packs=await db.getShopConfig()}catch(e){}
     if(!packs.length)packs=[{pack_size:1,price_darai:100000,discount_pct:0},{pack_size:2,price_darai:196000,discount_pct:2},{pack_size:3,price_darai:288000,discount_pct:4},{pack_size:5,price_darai:470000,discount_pct:6},{pack_size:7,price_darai:644000,discount_pct:8},{pack_size:10,price_darai:900000,discount_pct:10}];
+    // Находим цену минимального пакета (1 жизнь) для расчёта скидки
+    const minPack=packs.find(p=>p.pack_size===1)||packs[0];
+    const pricePerLife=minPack.price_darai/minPack.pack_size;
     const daraiIcon=`<img src="https://i.ibb.co/8gR4k77f/darai.png" style="width:1em;height:1em;border-radius:50%;vertical-align:middle;object-fit:cover;display:inline-block;margin-right:3px">`;
     const rows=packs.map(p=>{
       const lives=p.pack_size,price=p.price_darai;
+      // Скидка = (1 - (цена пакета / (кол-во жизней * цена мин. пакета))) * 100
+      const discount=lives>1?Math.round((1-(price/(lives*pricePerLife)))*100):0;
       const label=lives===1?'1 жизнь':lives<5?`${lives} жизни`:`${lives} жизней`;
-      const badge=p.discount_pct>0?`<span style="background:#2e7d32;color:#fff;font-size:0.65rem;padding:2px 6px;border-radius:10px;margin-left:4px">−${p.discount_pct}%</span>`:'';
+      const badge=discount>0?`<span style="background:#2e7d32;color:#fff;font-size:0.65rem;padding:2px 6px;border-radius:10px;margin-left:4px">−${discount}%</span>`:'';
       return`<div class="shop-item"><div style="font-size:1.5rem">❤️</div><div class="shop-coins">${label}${badge}</div><div class="shop-label" style="display:flex;align-items:center;justify-content:center;gap:3px">${daraiIcon}<span>${price.toLocaleString()} DARAI</span></div><button class="btn-buy" data-lives="${lives}" data-price="${price}">Купить</button></div>`;
     }).join('');
-    el.innerHTML=`<div class="shop"><h3 class="section-title">Купить жизни за DARAI</h3><div style="color:var(--text-dim);font-size:0.75rem;padding:4px 0 8px">Токен: darai.tkn.near · 1 жизнь = 100 000 DARAI</div><div class="shop-grid">${rows}</div><div id="shop-status" style="color:#888;font-size:0.8rem;text-align:center;padding:8px 0;min-height:24px"></div></div>`;
+    el.innerHTML=`<div class="shop"><h3 class="section-title">Купить жизни за DARAI</h3><div style="color:var(--text-dim);font-size:0.75rem;padding:4px 0 8px">Токен: darai.tkn.near · 1 жизнь = ${pricePerLife.toLocaleString()} DARAI</div><div class="shop-grid">${rows}</div><div id="shop-status" style="color:#888;font-size:0.8rem;text-align:center;padding:8px 0;min-height:24px"></div></div>`;
     el.querySelectorAll('.btn-buy').forEach(btn=>{
       btn.addEventListener('click',async()=>await this._buyLives(parseInt(btn.dataset.lives),parseInt(btn.dataset.price)));
     });
@@ -796,9 +801,18 @@ class UI {
       <div id="admin-status" style="color:#888;font-size:0.8rem;text-align:center;min-height:20px"></div>
       <div style="border-top:1px solid #333;padding-top:12px;margin-top:4px">
         <div class="section-title">🛒 Цены на жизни в магазине</div>
+        <div style="font-size:0.7rem;color:var(--text-dim);margin:4px 0">Скидка рассчитывается автоматически от цены 1 жизни</div>
         <div id="admin-shop-rows" style="display:flex;flex-direction:column;gap:4px;margin:8px 0"></div>
         <button id="btn-add-shop-pack" style="background:var(--surface2);border:none;color:#ffd700;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:0.8rem">+ Добавить пакет</button>
         <button id="btn-save-shop" style="background:#2e7d32;color:#fff;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:0.8rem;margin-left:8px">Сохранить цены</button>
+      </div>
+      <div style="border-top:1px solid #333;padding-top:12px;margin-top:4px">
+        <div class="section-title">⏰ Автозавершение турниров</div>
+        <div style="font-size:0.78rem;color:var(--text-dim);line-height:1.5">
+          Cron: каждое воскресенье в 00:00 по Тбилиси<br>
+          Оба турнира завершаются автоматически, награды начисляются, таблицы обнуляются.<br>
+          Логи: Vercel Dashboard → Logs
+        </div>
       </div>
     </div>`;
 
@@ -864,32 +878,35 @@ class UI {
     let shopPacks=[];
     try{shopPacks=await db.getShopConfig()}catch(e){}
     const shopContainer=document.getElementById('admin-shop-rows');
-    const renderShopRow=(p)=>{
+    const renderShopRow=(p,basePrice)=>{
       const div=document.createElement('div');
       div.style.cssText='display:flex;align-items:center;gap:6px;margin:2px 0';
       div.dataset.packSize=p.pack_size;
-      div.innerHTML=`<span style="font-size:0.75rem;color:var(--text-dim);width:50px">${p.pack_size} ❤️</span><input type="number" value="${p.price_darai}" min="1" placeholder="Цена DARAI" style="width:100px;background:var(--surface2);border:1px solid #333;color:#fff;border-radius:4px;padding:3px 6px;font-size:0.8rem" class="shop-price"><input type="number" value="${p.discount_pct||0}" min="0" max="99" placeholder="Скидка%" style="width:60px;background:var(--surface2);border:1px solid #333;color:#fff;border-radius:4px;padding:3px 6px;font-size:0.8rem" class="shop-disc"><span style="font-size:0.7rem;color:var(--text-dim)">%</span><button class="btn-del-shop" style="background:var(--accent);border:none;color:#fff;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:0.75rem">✕</button>`;
+      const disc=p.pack_size>1&&basePrice>0?Math.round((1-(p.price_darai/(p.pack_size*basePrice)))*100):0;
+      div.innerHTML=`<span style="font-size:0.75rem;color:var(--text-dim);width:50px">${p.pack_size} ❤️</span><input type="number" value="${p.price_darai}" min="1" placeholder="Цена DARAI" style="width:100px;background:var(--surface2);border:1px solid #333;color:#fff;border-radius:4px;padding:3px 6px;font-size:0.8rem" class="shop-price"><span style="font-size:0.7rem;color:${disc>0?'#4caf50':'var(--text-dim)'};width:50px">${disc>0?`−${disc}%`:''}</span><button class="btn-del-shop" style="background:var(--accent);border:none;color:#fff;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:0.75rem">✕</button>`;
       div.querySelector('.btn-del-shop').addEventListener('click',async()=>{
         await db.deleteShopPack(p.pack_size).catch(()=>{});div.remove();
       });
       return div;
     };
-    shopPacks.forEach(p=>shopContainer.appendChild(renderShopRow(p)));
+    const basePrice=shopPacks.find(p=>p.pack_size===1)?.price_darai||shopPacks[0]?.price_darai||100000;
+    shopPacks.forEach(p=>shopContainer.appendChild(renderShopRow(p,basePrice)));
 
     document.getElementById('btn-add-shop-pack').addEventListener('click',()=>{
       const sizes=Array.from(shopContainer.querySelectorAll('[data-pack-size]')).map(d=>parseInt(d.dataset.packSize));
       const next=sizes.length?Math.max(...sizes)+1:1;
-      shopContainer.appendChild(renderShopRow({pack_size:next,price_darai:100000*next,discount_pct:0}));
+      shopContainer.appendChild(renderShopRow({pack_size:next,price_darai:basePrice*next,discount_pct:0},basePrice));
     });
 
     document.getElementById('btn-save-shop').addEventListener('click',async()=>{
       const s=document.getElementById('admin-status');s.textContent='Сохраняем цены...';s.style.color='#888';
       try{
-        const packs=Array.from(shopContainer.querySelectorAll('[data-pack-size]')).map(div=>({
-          pack_size:parseInt(div.dataset.packSize),
-          price_darai:parseInt(div.querySelector('.shop-price').value)||100000,
-          discount_pct:parseInt(div.querySelector('.shop-disc').value)||0
-        }));
+        const packs=Array.from(shopContainer.querySelectorAll('[data-pack-size]')).map(div=>{
+          const packSize=parseInt(div.dataset.packSize);
+          const price=parseInt(div.querySelector('.shop-price').value)||100000;
+          const disc=packSize>1&&basePrice>0?Math.round((1-(price/(packSize*basePrice)))*100):0;
+          return{pack_size:packSize,price_darai:price,discount_pct:Math.max(0,disc)};
+        });
         await db.saveShopConfig(packs);
         s.style.color='#4caf50';s.textContent='✓ Цены сохранены!';
       }catch(e){s.style.color='#e94560';s.textContent='Ошибка.'}

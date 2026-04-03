@@ -344,8 +344,8 @@ class UI {
         <div class="metric"><div class="metric-label">Поле</div><div class="metric-value" id="grid-size">4×4</div></div>
       </div>
       <div class="actions">
-        <button class="btn-action" id="btn-undo">↩ Отмена<span class="cost">40🪙</span></button>
-        <button class="btn-action" id="btn-delete">✕ Удалить<span class="cost">80🪙</span></button>
+        <button class="btn-action" id="btn-undo">↩ Отмена<span class="cost">40<img src="https://i.ibb.co/JwRdhbbJ/6-4x.png" style="width:1em;height:1em;border-radius:50%;vertical-align:middle;object-fit:cover;display:inline"></span></button>
+        <button class="btn-action" id="btn-delete">✕ Удалить<span class="cost">80<img src="https://i.ibb.co/JwRdhbbJ/6-4x.png" style="width:1em;height:1em;border-radius:50%;vertical-align:middle;object-fit:cover;display:inline"></span></button>
         <button class="btn-action hidden" id="btn-auto-delete">⚡ Авто-уд.<span class="badge hidden" id="auto-badge">1</span></button>
       </div>
       <div class="board-wrapper">
@@ -354,7 +354,7 @@ class UI {
           <div class="overlay-content">
             <div class="overlay-title">Игра окончена</div>
             <div id="overlay-score"></div><div id="overlay-coins"></div>
-            <button class="btn-overlay" id="btn-continue">Удалить 2 плитки <span class="cost">120🪙</span></button>
+            <button class="btn-overlay" id="btn-continue">Удалить 2 плитки <span class="cost">120<img src="https://i.ibb.co/JwRdhbbJ/6-4x.png" style="width:1em;height:1em;border-radius:50%;vertical-align:middle;object-fit:cover;display:inline"></span></button>
             <button class="btn-overlay btn-heart hidden" id="btn-heart">💗 Второе сердце</button>
             <button class="btn-overlay btn-newgame" id="btn-overlay-new">Новая игра</button>
           </div>
@@ -391,7 +391,7 @@ class UI {
       this._undoCooldown=true;
       setTimeout(()=>{this._undoCooldown=false},300);
       if(!this.board.undo(this.currency)){
-        if(this.currency.coins<40)this.toast('Недостаточно монет (нужно 40🪙)');
+        if(this.currency.coins<40)this.toast('Недостаточно монет (нужно 40<img src="https://i.ibb.co/JwRdhbbJ/6-4x.png" style="width:1em;height:1em;border-radius:50%;vertical-align:middle;object-fit:cover;display:inline">)');
         else this.toast('Нет хода для отмены');
       }
     });
@@ -675,18 +675,18 @@ class UI {
     const al=u.getAutoDeleteLevel(),ac=u.autoDeleteUpgradeCost();
     el.innerHTML=`<div class="upgrades">
       <h3 class="section-title">Расширение поля</h3>
-      <div class="upgrade-item"><div class="upg-info"><b>Поле 5×5</b><br>25 клеток вместо 16</div>${u.hasGrid5()?'<span class="upg-done">✓ Куплено</span>':`<button class="btn-upg${coins<10000?' disabled':''}" id="btn-grid5">10 000🪙</button>`}</div>
-      <div class="upgrade-item"><div class="upg-info"><b>Поле 6×6</b><br>36 клеток. Требует 5×5</div>${u.hasGrid6()?'<span class="upg-done">✓ Куплено</span>':`<button class="btn-upg${(!u.hasGrid5()||coins<20000)?' disabled':''}" id="btn-grid6">20 000🪙</button>`}</div>
+      <div class="upgrade-item"><div class="upg-info"><b>Поле 5×5</b><br>25 клеток вместо 16</div>${u.hasGrid5()?'<span class="upg-done">✓ Куплено</span>':`<button class="btn-upg${coins<10000?' disabled':''}" id="btn-grid5">10 000<img src="https://i.ibb.co/JwRdhbbJ/6-4x.png" style="width:1em;height:1em;border-radius:50%;vertical-align:middle;object-fit:cover;display:inline"></button>`}</div>
+      <div class="upgrade-item"><div class="upg-info"><b>Поле 6×6</b><br>36 клеток. Требует 5×5</div>${u.hasGrid6()?'<span class="upg-done">✓ Куплено</span>':`<button class="btn-upg${(!u.hasGrid5()||coins<20000)?' disabled':''}" id="btn-grid6">20 000<img src="https://i.ibb.co/JwRdhbbJ/6-4x.png" style="width:1em;height:1em;border-radius:50%;vertical-align:middle;object-fit:cover;display:inline"></button>`}</div>
       <h3 class="section-title">Шансы плиток ${!su?'🔒 (достигни 2048)':`(ур. ${sl}/8)`}</h3>
       <div class="upgrade-item"><div class="upg-info">Улучшить шансы появления плиток<br>
         <span style="font-size:0.7rem;color:#666">${sl===0?'Сейчас: 2×90%, 4×10%':sl===1?'Сейчас: 2×80%, 4×20%':sl===2?'Сейчас: 2×60%, 4×30%, 8×10%':sl===3?'Сейчас: 2×40%, 4×40%, 8×20%':sl===4?'Сейчас: 2×10%, 4×50%, 8×30%, 16×10%':sl===5?'Сейчас: 4×40%, 8×40%, 16×20%':sl===6?'Сейчас: 4×20%, 8×50%, 16×30%':sl===7?'Сейчас: 8×60%, 16×40%':'Сейчас: 8×50%, 16×50%'}</span>
         ${sl<8?`<span style="font-size:0.7rem;color:#4caf50"> → ${sl===0?'2×80%, 4×20%':sl===1?'2×60%, 4×30%, 8×10%':sl===2?'2×40%, 4×40%, 8×20%':sl===3?'2×10%, 4×50%, 8×30%, 16×10%':sl===4?'4×40%, 8×40%, 16×20%':sl===5?'4×20%, 8×50%, 16×30%':sl===6?'8×60%, 16×40%':'8×50%, 16×50%'}</span>`:''}
-      </div>${sl>=8?'<span class="upg-done">✓ Максимум</span>':`<button class="btn-upg${(!su||coins<sc)?' disabled':''}" id="btn-spawn">${su?sc+'🪙':'Заблокировано'}</button>`}</div>
+      </div>${sl>=8?'<span class="upg-done">✓ Максимум</span>':`<button class="btn-upg${(!su||coins<sc)?' disabled':''}" id="btn-spawn">${su?sc+'<img src="https://i.ibb.co/JwRdhbbJ/6-4x.png" style="width:1em;height:1em;border-radius:50%;vertical-align:middle;object-fit:cover;display:inline">':'Заблокировано'}</button>`}</div>
       <h3 class="section-title">Монеты и прогрессия</h3>
-      <div class="upgrade-item"><div class="upg-info"><b>Бонус к монетам</b> (ур. ${cbl}/3)<br>+5/10/15% к монетам за слияния ≥16</div>${cbl>=3?'<span class="upg-done">✓ Максимум</span>':`<button class="btn-upg${coins<cbc?' disabled':''}" id="btn-coin-bonus">${cbc}🪙</button>`}</div>
-      <div class="upgrade-item"><div class="upg-info"><b>Комбо-монеты</b> (ур. ${cl}/10)<br>×${(1+cl*0.105).toFixed(2)} к монетам за слияния ≥128</div>${cl>=10?'<span class="upg-done">✓ Максимум</span>':`<button class="btn-upg${coins<cc?' disabled':''}" id="btn-combo">${cc}🪙</button>`}</div>
-      <div class="upgrade-item"><div class="upg-info"><b>Авто-удаление</b> (ур. ${al}/3)<br>Заряд каждые ${[20,15,10][al]||10} слияний</div>${al>=3?'<span class="upg-done">✓ Максимум</span>':`<button class="btn-upg${coins<ac?' disabled':''}" id="btn-auto-del">${ac}🪙</button>`}</div>
-      <div class="upgrade-item"><div class="upg-info"><b>Второе сердце</b><br>1 бесплатное удаление при поражении за сессию</div>${u.hasSecondHeart()?'<span class="upg-done">✓ Куплено</span>':`<button class="btn-upg${coins<1800?' disabled':''}" id="btn-heart-upg">1 800🪙</button>`}</div>
+      <div class="upgrade-item"><div class="upg-info"><b>Бонус к монетам</b> (ур. ${cbl}/3)<br>+5/10/15% к монетам за слияния ≥16</div>${cbl>=3?'<span class="upg-done">✓ Максимум</span>':`<button class="btn-upg${coins<cbc?' disabled':''}" id="btn-coin-bonus">${cbc}<img src="https://i.ibb.co/JwRdhbbJ/6-4x.png" style="width:1em;height:1em;border-radius:50%;vertical-align:middle;object-fit:cover;display:inline"></button>`}</div>
+      <div class="upgrade-item"><div class="upg-info"><b>Комбо-монеты</b> (ур. ${cl}/10)<br>×${(1+cl*0.105).toFixed(2)} к монетам за слияния ≥128</div>${cl>=10?'<span class="upg-done">✓ Максимум</span>':`<button class="btn-upg${coins<cc?' disabled':''}" id="btn-combo">${cc}<img src="https://i.ibb.co/JwRdhbbJ/6-4x.png" style="width:1em;height:1em;border-radius:50%;vertical-align:middle;object-fit:cover;display:inline"></button>`}</div>
+      <div class="upgrade-item"><div class="upg-info"><b>Авто-удаление</b> (ур. ${al}/3)<br>Заряд каждые ${[20,15,10][al]||10} слияний</div>${al>=3?'<span class="upg-done">✓ Максимум</span>':`<button class="btn-upg${coins<ac?' disabled':''}" id="btn-auto-del">${ac}<img src="https://i.ibb.co/JwRdhbbJ/6-4x.png" style="width:1em;height:1em;border-radius:50%;vertical-align:middle;object-fit:cover;display:inline"></button>`}</div>
+      <div class="upgrade-item"><div class="upg-info"><b>Второе сердце</b><br>1 бесплатное удаление при поражении за сессию</div>${u.hasSecondHeart()?'<span class="upg-done">✓ Куплено</span>':`<button class="btn-upg${coins<1800?' disabled':''}" id="btn-heart-upg">1 800<img src="https://i.ibb.co/JwRdhbbJ/6-4x.png" style="width:1em;height:1em;border-radius:50%;vertical-align:middle;object-fit:cover;display:inline"></button>`}</div>
     </div>`;
     const b=(id,fn)=>{const btn=document.getElementById(id);if(btn&&!btn.classList.contains('disabled'))btn.addEventListener('click',fn)};
     b('btn-grid5',()=>{if(u.buyGrid5(this.currency)){this.toast('Поле 5×5 куплено! Начни новую игру.');this._renderUpgrades()}else this.toast('Недостаточно монет')});
@@ -746,7 +746,7 @@ class UI {
     const rl2=(i)=>{if(i===0)return'<span class="lb-rank gold">🥇</span>';if(i===1)return'<span class="lb-rank silver">🥈</span>';if(i===2)return'<span class="lb-rank bronze">🥉</span>';return`<span class="lb-rank">${i+1}</span>`};
     listEl.innerHTML=rows.map((r,i)=>{
       const val=mode==='score'?r.best_score?.toLocaleString():r.games_played+' игр';
-      const prize=rewardMap[i+1]?`<span style="color:#ffd700;font-size:0.75rem;margin-left:4px">+${rewardMap[i+1]}🪙</span>`:'';
+      const prize=rewardMap[i+1]?`<span style="color:#ffd700;font-size:0.75rem;margin-left:4px">+${rewardMap[i+1]}<img src="https://i.ibb.co/JwRdhbbJ/6-4x.png" style="width:1em;height:1em;border-radius:50%;vertical-align:middle;object-fit:cover;display:inline"></span>`:'';
       return`<div class="lb-row${r.nickname===myNick?' lb-me':''}">${rl2(i)}<span class="lb-nick">${r.nickname===myNick?'👤 '+r.nickname:r.nickname}</span>${prize}<span class="lb-score">${val}</span></div>`;
     }).join('');
   }
@@ -911,7 +911,7 @@ class UI {
       <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
         <div>
           <span class="ach-label" style="font-weight:700">Ежедневная награда</span><br>
-          <span style="font-size:0.75rem;color:var(--text-dim)">День ${streak+1} · +${nextReward}🪙</span>
+          <span style="font-size:0.75rem;color:var(--text-dim)">День ${streak+1} · +${nextReward}<img src="https://i.ibb.co/JwRdhbbJ/6-4x.png" style="width:1em;height:1em;border-radius:50%;vertical-align:middle;object-fit:cover;display:inline"></span>
         </div>
         ${canClaim
           ?`<button class="btn-claim pulse" id="btn-daily-claim">Забрать</button>`
@@ -933,15 +933,15 @@ class UI {
     const nftClaimed=nftLastClaim===todayKey;
     h+=`<h3 class="section-title">NFT награда</h3>
     <div class="ach-item"><span class="ach-tile" style="background:#4a148c;font-size:0.65rem">NFT</span>
-    <span class="ach-label">Настоящий юпик · +10🪙/день</span>
+    <span class="ach-label">Настоящий юпик · +10<img src="https://i.ibb.co/JwRdhbbJ/6-4x.png" style="width:1em;height:1em;border-radius:50%;vertical-align:middle;object-fit:cover;display:inline">/день</span>
     <span id="nft-reward-status">${nftClaimed?'<span class="ach-status">Получено</span>':'<button class="btn-claim" id="btn-nft-claim">Забрать</button>'}</span>
     </div>`;
-    h+=`<h3 class="section-title">Активная цель</h3><div class="ach-item"><span class="ach-tile tile-${goal}">${goal}</span><span class="ach-label">Плитка ${goal} → +${this.achievements.getReward(goal)}🪙</span>${pending?`<button class="btn-claim pulse" id="btn-claim">Забрать</button>`:'<span class="ach-status">Ещё не достигнута</span>'}</div>`;
-    const ng=goal*2;if(max<ng)h+=`<h3 class="section-title">Следующая</h3><div class="ach-item"><span class="ach-tile tile-${ng}">${ng}</span><span class="ach-label">Плитка ${ng} → +${this.achievements.getReward(ng)}🪙</span><span class="ach-status">Следующая</span></div>`;
+    h+=`<h3 class="section-title">Активная цель</h3><div class="ach-item"><span class="ach-tile tile-${goal}">${goal}</span><span class="ach-label">Плитка ${goal} → +${this.achievements.getReward(goal)}<img src="https://i.ibb.co/JwRdhbbJ/6-4x.png" style="width:1em;height:1em;border-radius:50%;vertical-align:middle;object-fit:cover;display:inline"></span>${pending?`<button class="btn-claim pulse" id="btn-claim">Забрать</button>`:'<span class="ach-status">Ещё не достигнута</span>'}</div>`;
+    const ng=goal*2;if(max<ng)h+=`<h3 class="section-title">Следующая</h3><div class="ach-item"><span class="ach-tile tile-${ng}">${ng}</span><span class="ach-label">Плитка ${ng} → +${this.achievements.getReward(ng)}<img src="https://i.ibb.co/JwRdhbbJ/6-4x.png" style="width:1em;height:1em;border-radius:50%;vertical-align:middle;object-fit:cover;display:inline"></span><span class="ach-status">Следующая</span></div>`;
     h+='</div>';el.innerHTML=h;
 
     const cb=document.getElementById('btn-claim');
-    if(cb)cb.addEventListener('click',()=>{const r=this.achievements.claim(this.currency);this.toast(`+${r}🪙 за достижение!`);this._renderAchievements()});
+    if(cb)cb.addEventListener('click',()=>{const r=this.achievements.claim(this.currency);this.toast(`+${r}<img src="https://i.ibb.co/JwRdhbbJ/6-4x.png" style="width:1em;height:1em;border-radius:50%;vertical-align:middle;object-fit:cover;display:inline"> за достижение!`);this._renderAchievements()});
 
     const dc=document.getElementById('btn-daily-claim');
     if(dc)dc.addEventListener('click',async()=>{
@@ -952,7 +952,7 @@ class UI {
       window._playerData.daily_streak=newStreak;
       window._playerData.daily_last_claim=todayKey;
       window._playerData.daily_played_today=false;
-      this.toast(`+${coins}🪙 ежедневная награда! День ${newStreak}`);
+      this.toast(`+${coins}<img src="https://i.ibb.co/JwRdhbbJ/6-4x.png" style="width:1em;height:1em;border-radius:50%;vertical-align:middle;object-fit:cover;display:inline"> ежедневная награда! День ${newStreak}`);
       this._renderAchievements();
     });
 
@@ -991,7 +991,7 @@ class UI {
         this.currency.add(10);
         localStorage.setItem(nftClaimKey,todayKey);
         if(window._syncToDB)window._syncToDB();
-        this.toast('+10🪙 Настоящий юпик!');
+        this.toast('+10<img src="https://i.ibb.co/JwRdhbbJ/6-4x.png" style="width:1em;height:1em;border-radius:50%;vertical-align:middle;object-fit:cover;display:inline"> Настоящий юпик!');
         this._renderAchievements();
       }catch(e){
         nftBtn.disabled=false;nftBtn.textContent='Забрать';
@@ -1025,7 +1025,7 @@ class UI {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
           <div style="font-size:0.7rem;color:var(--text-dim)">Монеты</div>
-          <div style="font-weight:700">${this.currency.coins}🪙</div>
+          <div style="font-weight:700">${this.currency.coins}<img src="https://i.ibb.co/JwRdhbbJ/6-4x.png" style="width:1em;height:1em;border-radius:50%;vertical-align:middle;object-fit:cover;display:inline"></div>
         </div>
         <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
           <div style="font-size:0.7rem;color:var(--text-dim)">Рекорд</div>
@@ -1069,7 +1069,7 @@ class UI {
         <div style="font-size:0.85rem;color:var(--text);line-height:1.6">
           <div style="margin-bottom:8px">Приглашай друзей и получай бонусы:</div>
           <div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="font-size:1.1rem">❤️</span><span><b>+1 жизнь</b> — за каждого нового реферала</span></div>
-          <div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="font-size:1.1rem">🪙</span><span><b>+100 монет</b> — когда реферал достигает плитки 2048</span></div>
+          <div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="font-size:1.1rem"><img src="https://i.ibb.co/JwRdhbbJ/6-4x.png" style="width:1em;height:1em;border-radius:50%;vertical-align:middle;object-fit:cover;display:inline"></span><span><b>+100 монет</b> — когда реферал достигает плитки 2048</span></div>
           <div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="font-size:1.1rem">🛒</span><span><b>+10 монет</b> — за каждую купленную рефералом жизнь</span></div>
           <div style="margin-top:10px;font-size:0.75rem;color:var(--text-dim)">Поделись своей ссылкой — реферал привязывается навсегда при первом входе.</div>
         </div>

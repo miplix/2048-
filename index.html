@@ -1010,10 +1010,10 @@ class UI {
         </div>
       </div>
       <div>
-        <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:4px">Реферальная ссылка</div>
+        <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:4px;display:flex;align-items:center;gap:6px">Реферальная ссылка <button id="btn-ref-info" style="background:var(--surface2);border:none;color:#ffd700;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:0.7rem;font-weight:700">?</button></div>
         <div style="display:flex;gap:6px">
           <input id="ref-link-input" value="${refLink}" readonly style="flex:1;background:var(--surface2);border:1px solid #333;color:#aaa;border-radius:6px;padding:6px 8px;font-size:0.72rem;overflow:hidden;text-overflow:ellipsis">
-          <button id="btn-copy-ref" style="background:var(--accent);border:none;color:#fff;border-radius:6px;padding:6px 10px;cursor:pointer;font-size:0.8rem;white-space:nowrap">Копировать</button>
+          <button id="btn-copy-ref" style="background:var(--accent);border:none;color:#fff;border-radius:6px;padding:6px 10px;cursor:pointer;font-size:0.8rem;white-space:nowrap;transition:all 0.2s">Копировать</button>
         </div>
       </div>
       ${referrals.length?`<div><div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:4px">Мои рефералы (${referrals.length})</div><div style="max-height:100px;overflow-y:auto;display:flex;flex-direction:column;gap:3px">${referrals.map(r=>`<div style="font-size:0.78rem;color:#aaa;padding:3px 6px;background:var(--surface2);border-radius:4px">${r.nickname}</div>`).join('')}</div></div>`:''}
@@ -1023,9 +1023,29 @@ class UI {
     document.getElementById('profile-close').addEventListener('click',()=>modal.remove());
     modal.addEventListener('click',e=>{if(e.target===modal)modal.remove()});
     document.getElementById('btn-copy-ref').addEventListener('click',()=>{
-      navigator.clipboard.writeText(refLink).then(()=>this.toast('Ссылка скопирована!')).catch(()=>{
-        document.getElementById('ref-link-input').select();document.execCommand('copy');this.toast('Ссылка скопирована!');
+      const btn=document.getElementById('btn-copy-ref');
+      navigator.clipboard.writeText(refLink).then(()=>{}).catch(()=>{
+        document.getElementById('ref-link-input').select();document.execCommand('copy');
       });
+      btn.textContent='✓ Скопировано';btn.style.background='#2e7d32';
+      setTimeout(()=>{btn.textContent='Копировать';btn.style.background='var(--accent)'},2000);
+    });
+    document.getElementById('btn-ref-info').addEventListener('click',()=>{
+      const info=document.createElement('div');
+      info.style.cssText='position:fixed;inset:0;background:rgba(10,10,26,0.95);z-index:9500;display:flex;align-items:center;justify-content:center;padding:16px';
+      info.innerHTML=`<div style="background:var(--surface);border-radius:12px;padding:20px;width:100%;max-width:340px;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center"><span style="font-weight:700;font-size:1rem">🎁 Реферальная программа</span><button id="ref-info-close" style="background:none;border:none;color:#888;cursor:pointer;font-size:1.2rem">✕</button></div>
+        <div style="font-size:0.85rem;color:var(--text);line-height:1.6">
+          <div style="margin-bottom:8px">Приглашай друзей и получай бонусы:</div>
+          <div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="font-size:1.1rem">❤️</span><span><b>+1 жизнь</b> — за каждого нового реферала</span></div>
+          <div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="font-size:1.1rem">🪙</span><span><b>+100 монет</b> — когда реферал достигает плитки 2048</span></div>
+          <div style="display:flex;align-items:center;gap:8px;margin:4px 0"><span style="font-size:1.1rem">🛒</span><span><b>+10 монет</b> — за каждую купленную рефералом жизнь</span></div>
+          <div style="margin-top:10px;font-size:0.75rem;color:var(--text-dim)">Поделись своей ссылкой — реферал привязывается навсегда при первом входе.</div>
+        </div>
+      </div>`;
+      document.body.appendChild(info);
+      info.querySelector('#ref-info-close').addEventListener('click',()=>info.remove());
+      info.addEventListener('click',e=>{if(e.target===info)info.remove()});
     });
     document.getElementById('btn-signout-profile').addEventListener('click',()=>{
       if(!confirm(`Выйти из ${accountId}?`))return;

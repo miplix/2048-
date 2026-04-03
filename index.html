@@ -184,7 +184,6 @@ class CurrencyManager {
   awardMerge(v){let b=this.calcMergeCoins(v);if(b===0)return 0;if(v>=16){const bl=this.upgradeSystem.getCoinBonusLevel();b*=1+([0,0.05,0.10,0.15][bl]||0)}if(v>=128){b*=1+this.upgradeSystem.getComboLevel()*0.105}const e=Math.floor(b);this._coins+=e;this._notify();return e}
   add(a){this._coins+=a;this._notify()}
   spend(a){if(this._coins<a)return false;this._coins-=a;this._notify();return true}
-  checkDailyBonus(){const t=new Date().toDateString();const key=this._k('dailyBonusDate');if(localStorage.getItem(key)!==t){localStorage.setItem(key,t);this.add(50);return true}return false}
 }
 
 // =============================================
@@ -336,6 +335,7 @@ class UI {
       <div class="header">
         <div class="header-title">2048<span class="plus">+</span></div>
         <div class="coins-display"><span>🪙</span><span id="coins-count">0</span></div>
+        <button id="btn-profile" style="background:var(--surface2);border:none;color:#fff;border-radius:50%;width:36px;height:36px;cursor:pointer;font-size:1.1rem;flex-shrink:0" title="Профиль">👤</button>
       </div>
       <div class="metrics">
         <div class="metric"><div class="metric-label">Счёт</div><div class="metric-value" id="score">0</div></div>
@@ -385,6 +385,7 @@ class UI {
   }
   _bindEvents(){
     document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>this._switchTab(b.dataset.tab)));
+    document.getElementById('btn-profile').addEventListener('click',()=>this.showProfile());
     document.getElementById('btn-undo').addEventListener('click',()=>{
       if(this._undoCooldown)return;
       this._undoCooldown=true;
@@ -420,7 +421,14 @@ class UI {
     },{passive:true});
     this.board.on('move',s=>this._render(s));
     this.board.on('gameOver',s=>{this._render(s);this._showGameOver(s)});
-    this.board.on('win',g=>this.toast(`🎉 Достигнута плитка ${g/2}! Новая цель: ${g}`));
+    this.board.on('win',g=>{
+      this.toast(`🎉 Достигнута плитка ${g/2}! Новая цель: ${g}`);
+      // Реферальный бонус рефереру: 100 монет когда реферал достигает 2048 (один раз)
+      if(g/2===2048&&window._playerData?.referred_by&&!localStorage.getItem('ref2048bonus__'+window._playerData.referred_by)){
+        localStorage.setItem('ref2048bonus__'+window._playerData.referred_by,'1');
+        db.awardReferrer(window._playerData.referred_by,100,false).catch(()=>{});
+      }
+    });
     this.board.on('autoCharge',c=>this._updateAutoDeleteBtn(c));
     this.currency.onChange(c=>this._renderCoins(c));
     this.achievements.onChange(()=>{this._renderAchievements();this._checkAchievementPopup()});
@@ -470,6 +478,7 @@ class UI {
     if(tab==='rewards')this._renderAchievements();
     if(tab==='leaderboard')this._renderLeaderboard('alltime');
     if(tab==='tournament')this._renderTournament('score');
+    if(tab==='shop')this._renderShop();
   }
   _enterDeleteMode(){
     this.deleteMode=true;document.getElementById('board').classList.add('delete-active');
@@ -549,34 +558,22 @@ class UI {
     const ov=document.getElementById('overlay-gameover');ov.style.pointerEvents='';ov.style.opacity='';
     this.board.reset();
   }
-  _renderShop(){
+  async _renderShop(){
     const el=document.getElementById('tab-shop');
-    // Иконка DARAI — используем ft_metadata icon (data URI из контракта)
+    el.innerHTML='<div class="lb-loading">Загрузка...</div>';
+    let packs=[];
+    try{packs=await db.getShopConfig()}catch(e){}
+    if(!packs.length)packs=[{pack_size:1,price_darai:100000,discount_pct:0},{pack_size:2,price_darai:196000,discount_pct:2},{pack_size:3,price_darai:288000,discount_pct:4},{pack_size:5,price_darai:470000,discount_pct:6},{pack_size:7,price_darai:644000,discount_pct:8},{pack_size:10,price_darai:900000,discount_pct:10}];
     const daraiIcon=`<img src="https://i.ibb.co/8gR4k77f/darai.png" style="width:1em;height:1em;border-radius:50%;vertical-align:middle;object-fit:cover;display:inline-block;margin-right:3px">`;
-    const rows=LIFE_PACKS.map(p=>{
-      const price=daraiPrice(p.lives,p.discount);
-      const priceStr=price.toLocaleString();
-      const label=p.lives===1?'1 жизнь':p.lives<5?`${p.lives} жизни`:`${p.lives} жизней`;
-      const badge=p.discount>0?`<span style="background:#2e7d32;color:#fff;font-size:0.65rem;padding:2px 6px;border-radius:10px;margin-left:4px">−${p.discount}%</span>`:'';
-      return`<div class="shop-item">
-        <div style="font-size:1.5rem">❤️</div>
-        <div class="shop-coins">${label}${badge}</div>
-        <div class="shop-label" style="display:flex;align-items:center;justify-content:center;gap:3px">${daraiIcon}<span>${priceStr} DARAI</span></div>
-        <button class="btn-buy" data-lives="${p.lives}" data-price="${price}">Купить</button>
-      </div>`;
+    const rows=packs.map(p=>{
+      const lives=p.pack_size,price=p.price_darai;
+      const label=lives===1?'1 жизнь':lives<5?`${lives} жизни`:`${lives} жизней`;
+      const badge=p.discount_pct>0?`<span style="background:#2e7d32;color:#fff;font-size:0.65rem;padding:2px 6px;border-radius:10px;margin-left:4px">−${p.discount_pct}%</span>`:'';
+      return`<div class="shop-item"><div style="font-size:1.5rem">❤️</div><div class="shop-coins">${label}${badge}</div><div class="shop-label" style="display:flex;align-items:center;justify-content:center;gap:3px">${daraiIcon}<span>${price.toLocaleString()} DARAI</span></div><button class="btn-buy" data-lives="${lives}" data-price="${price}">Купить</button></div>`;
     }).join('');
-    el.innerHTML=`<div class="shop">
-      <h3 class="section-title">Купить жизни за DARAI</h3>
-      <div style="color:var(--text-dim);font-size:0.75rem;padding:4px 0 8px">Токен: darai.tkn.near · 1 жизнь = 100 000 DARAI</div>
-      <div class="shop-grid">${rows}</div>
-      <div id="shop-status" style="color:#888;font-size:0.8rem;text-align:center;padding:8px 0;min-height:24px"></div>
-    </div>`;
+    el.innerHTML=`<div class="shop"><h3 class="section-title">Купить жизни за DARAI</h3><div style="color:var(--text-dim);font-size:0.75rem;padding:4px 0 8px">Токен: darai.tkn.near · 1 жизнь = 100 000 DARAI</div><div class="shop-grid">${rows}</div><div id="shop-status" style="color:#888;font-size:0.8rem;text-align:center;padding:8px 0;min-height:24px"></div></div>`;
     el.querySelectorAll('.btn-buy').forEach(btn=>{
-      btn.addEventListener('click',async()=>{
-        const lives=parseInt(btn.dataset.lives);
-        const priceHuman=parseInt(btn.dataset.price);
-        await this._buyLives(lives,priceHuman);
-      });
+      btn.addEventListener('click',async()=>await this._buyLives(parseInt(btn.dataset.lives),parseInt(btn.dataset.price)));
     });
   }
 
@@ -632,6 +629,10 @@ class UI {
       LivesSystem.addBought(lives);
       renderLivesUI();
       if(window._syncToDB)window._syncToDB();
+      // Реферальный бонус: 10 монет рефереру за каждую купленную жизнь
+      if(window._playerData?.referred_by){
+        db.awardReferrer(window._playerData.referred_by,lives*10,false).catch(()=>{});
+      }
       statusEl.style.color='#4caf50';
       statusEl.textContent=`✓ +${lives} ❤️ успешно куплено!`;
     }catch(e){
@@ -793,6 +794,12 @@ class UI {
         <button id="btn-finish-lives" style="flex:1;background:#6a1a3a;color:#fff;border:none;border-radius:8px;padding:8px;cursor:pointer;font-size:0.8rem">Завершить по играм</button>
       </div>
       <div id="admin-status" style="color:#888;font-size:0.8rem;text-align:center;min-height:20px"></div>
+      <div style="border-top:1px solid #333;padding-top:12px;margin-top:4px">
+        <div class="section-title">🛒 Цены на жизни в магазине</div>
+        <div id="admin-shop-rows" style="display:flex;flex-direction:column;gap:4px;margin:8px 0"></div>
+        <button id="btn-add-shop-pack" style="background:var(--surface2);border:none;color:#ffd700;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:0.8rem">+ Добавить пакет</button>
+        <button id="btn-save-shop" style="background:#2e7d32;color:#fff;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:0.8rem;margin-left:8px">Сохранить цены</button>
+      </div>
     </div>`;
 
     const _renumberRows=(container)=>{
@@ -852,17 +859,97 @@ class UI {
       try{const n=await db.finishTournament('lives');s.style.color='#4caf50';s.textContent=`✓ Завершён. Наград: ${n}`}
       catch(e){s.style.color='#e94560';s.textContent='Ошибка: '+e.message}
     },{once:true});
+
+    // Загружаем конфиг магазина
+    let shopPacks=[];
+    try{shopPacks=await db.getShopConfig()}catch(e){}
+    const shopContainer=document.getElementById('admin-shop-rows');
+    const renderShopRow=(p)=>{
+      const div=document.createElement('div');
+      div.style.cssText='display:flex;align-items:center;gap:6px;margin:2px 0';
+      div.dataset.packSize=p.pack_size;
+      div.innerHTML=`<span style="font-size:0.75rem;color:var(--text-dim);width:50px">${p.pack_size} ❤️</span><input type="number" value="${p.price_darai}" min="1" placeholder="Цена DARAI" style="width:100px;background:var(--surface2);border:1px solid #333;color:#fff;border-radius:4px;padding:3px 6px;font-size:0.8rem" class="shop-price"><input type="number" value="${p.discount_pct||0}" min="0" max="99" placeholder="Скидка%" style="width:60px;background:var(--surface2);border:1px solid #333;color:#fff;border-radius:4px;padding:3px 6px;font-size:0.8rem" class="shop-disc"><span style="font-size:0.7rem;color:var(--text-dim)">%</span><button class="btn-del-shop" style="background:var(--accent);border:none;color:#fff;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:0.75rem">✕</button>`;
+      div.querySelector('.btn-del-shop').addEventListener('click',async()=>{
+        await db.deleteShopPack(p.pack_size).catch(()=>{});div.remove();
+      });
+      return div;
+    };
+    shopPacks.forEach(p=>shopContainer.appendChild(renderShopRow(p)));
+
+    document.getElementById('btn-add-shop-pack').addEventListener('click',()=>{
+      const sizes=Array.from(shopContainer.querySelectorAll('[data-pack-size]')).map(d=>parseInt(d.dataset.packSize));
+      const next=sizes.length?Math.max(...sizes)+1:1;
+      shopContainer.appendChild(renderShopRow({pack_size:next,price_darai:100000*next,discount_pct:0}));
+    });
+
+    document.getElementById('btn-save-shop').addEventListener('click',async()=>{
+      const s=document.getElementById('admin-status');s.textContent='Сохраняем цены...';s.style.color='#888';
+      try{
+        const packs=Array.from(shopContainer.querySelectorAll('[data-pack-size]')).map(div=>({
+          pack_size:parseInt(div.dataset.packSize),
+          price_darai:parseInt(div.querySelector('.shop-price').value)||100000,
+          discount_pct:parseInt(div.querySelector('.shop-disc').value)||0
+        }));
+        await db.saveShopConfig(packs);
+        s.style.color='#4caf50';s.textContent='✓ Цены сохранены!';
+      }catch(e){s.style.color='#e94560';s.textContent='Ошибка.'}
+    });
   }
   _renderAchievements(){
-    const el=document.getElementById('tab-rewards'),col=this.achievements.getCollected();
+    const el=document.getElementById('tab-rewards');
+    const col=this.achievements.getCollected();
     const goal=this.achievements.getCurrentGoal(),pending=this.achievements.hasPendingClaim(),max=this.achievements.getMaxReached();
+    const p=window._playerData;
+    const todayKey=window._todayKey?window._todayKey():'';
+    const playedToday=p?.daily_played_today||false;
+    const lastClaim=p?.daily_last_claim||'';
+    const streak=p?.daily_streak||0;
+    const canClaim=playedToday&&lastClaim!==todayKey;
+    const nextReward=Math.min(10+(streak*10),100);
+    const currentReward=Math.min(10+((streak-1)*10),100);
+
     let h='<div class="achievements">';
+
+    // Ежедневная награда
+    h+=`<h3 class="section-title">Ежедневная награда</h3>
+    <div class="ach-item" style="flex-direction:column;align-items:flex-start;gap:6px">
+      <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
+        <div>
+          <span class="ach-label" style="font-weight:700">Ежедневная награда</span><br>
+          <span style="font-size:0.75rem;color:var(--text-dim)">День ${streak+1} · +${nextReward}🪙</span>
+        </div>
+        ${canClaim
+          ?`<button class="btn-claim pulse" id="btn-daily-claim">Забрать</button>`
+          :lastClaim===todayKey
+            ?`<span class="ach-status">Награда получена</span>`
+            :`<span class="ach-status" style="color:#e94560">Сыграй в игру</span>`
+        }
+      </div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap">
+        ${[1,2,3,4,5,6,7,8,9,10].map(d=>`<div style="width:28px;height:28px;border-radius:4px;background:${d<=streak?'#2e7d32':d===streak+1?'var(--accent)':'var(--surface2)'};display:flex;align-items:center;justify-content:center;font-size:0.65rem;color:#fff">${Math.min(d*10,100)}</div>`).join('')}
+      </div>
+    </div>`;
+
     if(col.length){h+='<h3 class="section-title">Собранные</h3>';col.forEach(t=>{h+=`<div class="ach-item collected"><span class="ach-tile tile-${t}">${t}</span><span class="ach-label">Плитка ${t}</span><span class="ach-status">✓ Получено</span></div>`})}
     h+=`<h3 class="section-title">Активная цель</h3><div class="ach-item"><span class="ach-tile tile-${goal}">${goal}</span><span class="ach-label">Плитка ${goal} → +${this.achievements.getReward(goal)}🪙</span>${pending?`<button class="btn-claim pulse" id="btn-claim">Забрать</button>`:'<span class="ach-status">Ещё не достигнута</span>'}</div>`;
     const ng=goal*2;if(max<ng)h+=`<h3 class="section-title">Следующая</h3><div class="ach-item"><span class="ach-tile tile-${ng}">${ng}</span><span class="ach-label">Плитка ${ng} → +${this.achievements.getReward(ng)}🪙</span><span class="ach-status">Следующая</span></div>`;
     h+='</div>';el.innerHTML=h;
+
     const cb=document.getElementById('btn-claim');
     if(cb)cb.addEventListener('click',()=>{const r=this.achievements.claim(this.currency);this.toast(`+${r}🪙 за достижение!`);this._renderAchievements()});
+
+    const dc=document.getElementById('btn-daily-claim');
+    if(dc)dc.addEventListener('click',async()=>{
+      if(!window._playerId||!window._playerData)return;
+      const newStreak=lastClaim===window._yesterdayKey?streak+1:1;
+      const coins=await db.claimDailyReward(window._playerId,newStreak,todayKey);
+      this.currency.add(coins);
+      window._playerData.daily_streak=newStreak;
+      window._playerData.daily_last_claim=todayKey;
+      window._playerData.daily_played_today=false;
+      this.toast(`+${coins}🪙 ежедневная награда! День ${newStreak}`);
+      this._renderAchievements();
+    });
   }
   _checkAchievementPopup(){
     if(!this.achievements.hasPendingClaim())return;
@@ -870,6 +957,63 @@ class UI {
     const p=document.getElementById('achievement-popup');
     p.textContent=`🏆 Достигнута плитка ${goal}! Забери награду во вкладке Награды`;
     p.classList.remove('hidden');setTimeout(()=>p.classList.add('hidden'),3000);
+  }
+  async showProfile(){
+    const accountId=localStorage.getItem('nearAccountId');
+    if(!accountId){this.toast('Войди через кошелёк');return}
+    const old=document.getElementById('profile-modal');if(old)old.remove();
+    const modal=document.createElement('div');
+    modal.id='profile-modal';
+    modal.style.cssText='position:fixed;inset:0;background:rgba(10,10,26,0.95);z-index:9000;display:flex;align-items:center;justify-content:center;padding:16px';
+    const refLink=`${window.location.origin}${window.location.pathname}?ref=${encodeURIComponent(accountId)}`;
+    let referrals=[];
+    try{referrals=await db.getReferrals(accountId)}catch(e){}
+    const p=window._playerData||{};
+    modal.innerHTML=`<div style="background:var(--surface);border-radius:12px;padding:20px;width:100%;max-width:400px;display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:1.1rem;font-weight:700">👤 ${accountId}</span>
+        <button id="profile-close" style="background:none;border:none;color:#888;cursor:pointer;font-size:1.2rem">✕</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:0.7rem;color:var(--text-dim)">Монеты</div>
+          <div style="font-weight:700">${this.currency.coins}🪙</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:0.7rem;color:var(--text-dim)">Рекорд</div>
+          <div style="font-weight:700">${parseInt(localStorage.getItem('bestScore__'+accountId)||'0').toLocaleString()}</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:0.7rem;color:var(--text-dim)">Жизни</div>
+          <div style="font-weight:700">❤️ ${LivesSystem.getCount()}</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:0.7rem;color:var(--text-dim)">Рефералов</div>
+          <div style="font-weight:700">${referrals.length}</div>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:4px">Реферальная ссылка</div>
+        <div style="display:flex;gap:6px">
+          <input id="ref-link-input" value="${refLink}" readonly style="flex:1;background:var(--surface2);border:1px solid #333;color:#aaa;border-radius:6px;padding:6px 8px;font-size:0.72rem;overflow:hidden;text-overflow:ellipsis">
+          <button id="btn-copy-ref" style="background:var(--accent);border:none;color:#fff;border-radius:6px;padding:6px 10px;cursor:pointer;font-size:0.8rem;white-space:nowrap">Копировать</button>
+        </div>
+      </div>
+      ${referrals.length?`<div><div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:4px">Мои рефералы (${referrals.length})</div><div style="max-height:100px;overflow-y:auto;display:flex;flex-direction:column;gap:3px">${referrals.map(r=>`<div style="font-size:0.78rem;color:#aaa;padding:3px 6px;background:var(--surface2);border-radius:4px">${r.nickname}</div>`).join('')}</div></div>`:''}
+      <button id="btn-signout-profile" style="background:var(--surface2);border:none;color:#e94560;border-radius:8px;padding:10px;cursor:pointer;font-weight:700">⏏ Выйти из аккаунта</button>
+    </div>`;
+    document.body.appendChild(modal);
+    document.getElementById('profile-close').addEventListener('click',()=>modal.remove());
+    modal.addEventListener('click',e=>{if(e.target===modal)modal.remove()});
+    document.getElementById('btn-copy-ref').addEventListener('click',()=>{
+      navigator.clipboard.writeText(refLink).then(()=>this.toast('Ссылка скопирована!')).catch(()=>{
+        document.getElementById('ref-link-input').select();document.execCommand('copy');this.toast('Ссылка скопирована!');
+      });
+    });
+    document.getElementById('btn-signout-profile').addEventListener('click',()=>{
+      if(!confirm(`Выйти из ${accountId}?`))return;
+      localStorage.removeItem('nearAccountId');location.reload();
+    });
   }
   toast(msg){
     const c=document.getElementById('toast-container'),el=document.createElement('div');
@@ -895,12 +1039,14 @@ class DB {
     this._ready=true;
   }
   async _wait(){if(this._ready)return;await new Promise(r=>{const t=setInterval(()=>{if(this._ready){clearInterval(t);r()}},50)})}
-  async getOrCreatePlayer(accountId){
+  async getOrCreatePlayer(accountId,referredBy){
     await this._wait();
     const{data:ex}=await this._client.from('players').select('*').eq('nickname',accountId).maybeSingle();
     if(ex){await this._client.from('players').update({last_seen_at:new Date().toISOString()}).eq('id',ex.id);return ex}
-    const{data:cr,error}=await this._client.from('players').insert({nickname:accountId}).select().single();
-    if(error)throw error;return cr;
+    const ref=referredBy||'miplix.tg';
+    const{data:cr,error}=await this._client.from('players').insert({nickname:accountId,referred_by:ref}).select().single();
+    if(error)throw error;
+    return cr;
   }
   async savePlayer(id,{coins,bestScore,maxTile,upgrades,achievements,lives,livesResetDate,livesBought,gameState}){
     await this._wait();
@@ -953,6 +1099,61 @@ class DB {
   async deleteTournamentRewards(type){
     await this._wait();
     await this._client.from('tournament_rewards').delete().eq('tournament_type',type);
+  }
+
+  // Ежедневная награда
+  async markPlayedToday(playerId,todayKey){
+    await this._wait();
+    await this._client.from('players').update({daily_played_today:true,daily_last_played:todayKey}).eq('id',playerId);
+  }
+  async claimDailyReward(playerId,streak,todayKey){
+    await this._wait();
+    const coins=Math.min(10+((streak-1)*10),100);
+    const{data:p}=await this._client.from('players').select('coins').eq('id',playerId).single();
+    if(!p)return 0;
+    await this._client.from('players').update({
+      coins:(p.coins||0)+coins,
+      daily_streak:streak,
+      daily_last_claim:todayKey,
+      daily_played_today:false
+    }).eq('id',playerId);
+    return coins;
+  }
+
+  // Рефералы
+  async getReferrals(accountId){
+    await this._wait();
+    const{data}=await this._client.from('players').select('nickname,best_score,created_at').eq('referred_by',accountId).order('created_at',{ascending:false});
+    return data||[];
+  }
+  async awardReferrer(referrerNickname,coins,giveLife){
+    await this._wait();
+    const{data:p}=await this._client.from('players').select('id,coins,lives').eq('nickname',referrerNickname).single();
+    if(!p)return;
+    const upd={coins:(p.coins||0)+coins};
+    if(giveLife)upd.lives=(p.lives||5)+1;
+    await this._client.from('players').update(upd).eq('id',p.id);
+    if(coins>0||giveLife){
+      const msg=giveLife?`🎁 По твоей ссылке зарегистрировался новый игрок! +1 ❤️`:`🎁 Реферальный бонус: +${coins} монет!`;
+      await this._client.from('tournament_notifications').insert({player_id:p.id,message:msg,coins_awarded:coins});
+    }
+  }
+
+  // Конфиг магазина
+  async getShopConfig(){
+    await this._wait();
+    const{data}=await this._client.from('shop_config').select('*').order('pack_size',{ascending:true});
+    return data||[];
+  }
+  async saveShopConfig(packs){
+    await this._wait();
+    for(const p of packs){
+      await this._client.from('shop_config').upsert({pack_size:p.pack_size,price_darai:p.price_darai,discount_pct:p.discount_pct||0},{onConflict:'pack_size'});
+    }
+  }
+  async deleteShopPack(packSize){
+    await this._wait();
+    await this._client.from('shop_config').delete().eq('pack_size',packSize);
   }
 
   async setTournamentReward(type,place,coins){
@@ -1060,6 +1261,10 @@ function daraiPrice(lives,discountPct){
 }
 
 function lsKey(key,accountId){return accountId?key+'__'+accountId:key}
+
+// Глобальные хелперы дат (Тбилиси UTC+4)
+window._todayKey=()=>{const now=new Date();const tb=new Date(now.getTime()+4*3600000);return tb.toISOString().slice(0,10)};
+window._yesterdayKey=(()=>{const now=new Date();const tb=new Date(now.getTime()+4*3600000-86400000);return tb.toISOString().slice(0,10)})();
 
 const LivesSystem={
   _accountId:null,
@@ -1249,7 +1454,6 @@ function applyPlayerData(player,accountId){
     localStorage.setItem(k('achievements'),JSON.stringify(merged));
   }
 
-  // Состояние поля — восстанавливаем из БД
   if(player.game_state&&player.game_state.grid){
     localStorage.setItem(k('gameState'),JSON.stringify(player.game_state));
   }
@@ -1308,13 +1512,25 @@ async function init(){
   // Инициализируем LivesSystem с accountId ДО загрузки данных
   LivesSystem.init(accountId);
 
+  // Читаем реферера из URL (?ref=alice.near) — только при первой регистрации
+  const urlRef=new URLSearchParams(window.location.search).get('ref')||null;
+  if(urlRef)window.history.replaceState({},'',window.location.pathname);
+
+  let playerData=null;
   if(accountId){
     try{
-      const player=await db.getOrCreatePlayer(accountId);
-      playerId=player.id;
-      window._playerId=player.id; // глобально для магазина
-      playerNickname=player.nickname;
-      applyPlayerData(player,accountId);
+      playerData=await db.getOrCreatePlayer(accountId,urlRef);
+      playerId=playerData.id;
+      window._playerId=playerData.id;
+      window._playerData=playerData;
+      playerNickname=playerData.nickname;
+      applyPlayerData(playerData,accountId);
+
+      // Если игрок новый (created_at близко к now) и есть реферер — награждаем реферера
+      const isNew=playerData.created_at&&(Date.now()-new Date(playerData.created_at).getTime())<10000;
+      if(isNew&&playerData.referred_by&&playerData.referred_by!==accountId){
+        db.awardReferrer(playerData.referred_by,0,true).catch(()=>{}); // +1 жизнь
+      }
     }catch(e){console.warn('DB unavailable, playing offline')}
   }
 
@@ -1331,7 +1547,6 @@ async function init(){
   // Отрисовываем жизни
   renderLivesUI();
 
-  if(currency.checkDailyBonus())ui.toast('🎁 Ежедневный бонус: +50 монет!');
   if(accountId)ui.toast(`👋 Подключён: ${accountId}`);
 
   // Показываем уведомления о наградах турнира (монеты уже начислены в БД при finishTournament)
@@ -1370,6 +1585,12 @@ async function init(){
     syncToDB();
     // Считаем игру в турнире по играм
     if(playerId)db.incrementGamesPlayed(playerId,playerNickname).catch(()=>{});
+    // Отмечаем что сегодня сыграл (для ежедневной награды)
+    if(playerId){
+      const todayKey=LivesSystem._todayKey();
+      db.markPlayedToday(playerId,todayKey).catch(()=>{});
+      if(playerData)playerData.daily_played_today=true;
+    }
     origReset();
   };
 
@@ -1416,23 +1637,6 @@ async function init(){
 
   // Синхронизация при закрытии/уходе со страницы
   window.addEventListener('beforeunload',()=>syncToDB());
-
-  // Кнопка выхода в шапке
-  if(accountId){
-    const coinsEl=document.querySelector('.coins-display');
-    if(coinsEl){
-      const btn=document.createElement('button');
-      btn.title=`${accountId} — выйти`;
-      btn.style.cssText='background:none;border:none;color:#666;cursor:pointer;font-size:0.8rem;padding:0 2px;margin-left:4px';
-      btn.textContent='⏏';
-      btn.addEventListener('click',()=>{
-        if(!confirm(`Выйти из ${accountId}?`))return;
-        localStorage.removeItem('nearAccountId');
-        location.reload();
-      });
-      coinsEl.appendChild(btn);
-    }
-  }
 }
 
 init();

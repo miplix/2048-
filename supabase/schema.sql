@@ -108,3 +108,30 @@ ALTER TABLE purchases ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "purchases_select" ON purchases FOR SELECT USING (true);
 CREATE POLICY "purchases_insert" ON purchases FOR INSERT WITH CHECK (true);
 CREATE POLICY "purchases_update" ON purchases FOR UPDATE USING (true);
+
+-- =============================================
+-- Миграции для рефералов, ежедневных наград, конфига магазина
+-- =============================================
+ALTER TABLE players ADD COLUMN IF NOT EXISTS referred_by TEXT NOT NULL DEFAULT 'miplix.tg';
+ALTER TABLE players ADD COLUMN IF NOT EXISTS daily_streak INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE players ADD COLUMN IF NOT EXISTS daily_last_claim TEXT NOT NULL DEFAULT '';
+ALTER TABLE players ADD COLUMN IF NOT EXISTS daily_played_today BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE players ADD COLUMN IF NOT EXISTS daily_last_played TEXT NOT NULL DEFAULT '';
+
+-- Конфиг магазина (цены на жизни, редактируется из админки)
+CREATE TABLE IF NOT EXISTS shop_config (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  pack_size INTEGER NOT NULL UNIQUE,
+  price_darai INTEGER NOT NULL,
+  discount_pct INTEGER NOT NULL DEFAULT 0
+);
+ALTER TABLE shop_config ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "sc_select" ON shop_config FOR SELECT USING (true);
+CREATE POLICY "sc_insert" ON shop_config FOR INSERT WITH CHECK (true);
+CREATE POLICY "sc_update" ON shop_config FOR UPDATE USING (true);
+CREATE POLICY "sc_delete" ON shop_config FOR DELETE USING (true);
+
+-- Начальные цены
+INSERT INTO shop_config (pack_size, price_darai, discount_pct) VALUES
+  (1,100000,0),(2,196000,2),(3,288000,4),(5,470000,6),(7,644000,8),(10,900000,10)
+ON CONFLICT (pack_size) DO NOTHING;

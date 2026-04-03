@@ -649,45 +649,23 @@ class UI {
 
   async _verifyTx(txHash,senderAccountId,expectedAmountHuman){
     try{
-      // Ждём немного — транзакция может ещё не проиндексироваться
       await new Promise(r=>setTimeout(r,2000));
-
-      const url='https://api.sendler.xyz/history/ft-transfers/?wallet_id=2048game.near&direction=in&symbol=darai.tkn.near&limit=50';
-      const resp=await fetch(url,{
-        headers:{
-          'accept':'application/json',
-          'X-API-Key':'j9mwYHIkRsmhM7dOoJy9yBSEdSZSWtBw02BOIGy3jzk'
-        }
-      });
-      if(!resp.ok)return true; // API недоступен — доверяем
-
+      const url=`/api/ft-check?wallet=2048game.near&direction=in&symbol=darai.tkn.near&limit=50`;
+      const resp=await fetch(url);
+      if(!resp.ok)return true;
       const data=await resp.json();
       const items=data.items||[];
-
-      // Ищем транзакцию по хэшу
       const tx=items.find(t=>t.tx_hash===txHash);
-      if(!tx)return true; // не нашли — возможно ещё не проиндексировалась, доверяем
-
-      // Проверяем отправителя
+      if(!tx)return true;
       if(tx.sender_id!==senderAccountId)return false;
-
-      // Проверяем получателя
       if(tx.receiver_id!=='2048game.near')return false;
-
-      // Проверяем сумму (amount в yocto = expectedAmountHuman * 10^18)
       const expectedAmount=(BigInt(expectedAmountHuman)*BigInt('1'+'0'.repeat(18))).toString();
       if(tx.amount!==expectedAmount)return false;
-
       return true;
     }catch(e){
-      console.error('sendler verify error',e);
-      return true; // при ошибке — доверяем
+      console.error('verify error',e);
+      return true;
     }
-  }
-
-  async _verifyTxFallback(txHash,senderAccountId,expectedAmountHuman){
-    // Оставлен как резерв, не используется
-    return true;
   }
   _renderUpgrades(){
     const el=document.getElementById('tab-upgrades'),u=this.upgrades,coins=this.currency.coins;
@@ -948,6 +926,16 @@ class UI {
     </div>`;
 
     if(col.length){h+='<h3 class="section-title">Собранные</h3>';col.forEach(t=>{h+=`<div class="ach-item collected"><span class="ach-tile tile-${t}">${t}</span><span class="ach-label">Плитка ${t}</span><span class="ach-status">✓ Получено</span></div>`})}
+
+    // NFT награда "Настоящий юпик"
+    const nftClaimKey='nftYupikClaim__'+(localStorage.getItem('nearAccountId')||'');
+    const nftLastClaim=localStorage.getItem(nftClaimKey)||'';
+    const nftClaimed=nftLastClaim===todayKey;
+    h+=`<h3 class="section-title">NFT награда</h3>
+    <div class="ach-item"><span class="ach-tile" style="background:#4a148c;font-size:0.65rem">NFT</span>
+    <span class="ach-label">Настоящий юпик · +10🪙/день</span>
+    <span id="nft-reward-status">${nftClaimed?'<span class="ach-status">Получено</span>':'<button class="btn-claim" id="btn-nft-claim">Забрать</button>'}</span>
+    </div>`;
     h+=`<h3 class="section-title">Активная цель</h3><div class="ach-item"><span class="ach-tile tile-${goal}">${goal}</span><span class="ach-label">Плитка ${goal} → +${this.achievements.getReward(goal)}🪙</span>${pending?`<button class="btn-claim pulse" id="btn-claim">Забрать</button>`:'<span class="ach-status">Ещё не достигнута</span>'}</div>`;
     const ng=goal*2;if(max<ng)h+=`<h3 class="section-title">Следующая</h3><div class="ach-item"><span class="ach-tile tile-${ng}">${ng}</span><span class="ach-label">Плитка ${ng} → +${this.achievements.getReward(ng)}🪙</span><span class="ach-status">Следующая</span></div>`;
     h+='</div>';el.innerHTML=h;
@@ -966,6 +954,49 @@ class UI {
       window._playerData.daily_played_today=false;
       this.toast(`+${coins}🪙 ежедневная награда! День ${newStreak}`);
       this._renderAchievements();
+    });
+
+    // NFT клейм
+    const nftBtn=document.getElementById('btn-nft-claim');
+    if(nftBtn)nftBtn.addEventListener('click',async()=>{
+      const accountId=localStorage.getItem('nearAccountId');
+      if(!accountId)return;
+      nftBtn.disabled=true;nftBtn.textContent='Проверяем...';
+      try{
+        const resp=await fetch(`/api/nft-check?owner=${encodeURIComponent(accountId)}`);
+        const data=await resp.json();
+        const items=data.items||[];
+        const hasYupik=items.some(i=>i.contract_id==='darai.mintbase1.near');
+        if(!hasYupik){
+          // Показываем всплывающее окно
+          const popup=document.createElement('div');
+          popup.style.cssText='position:fixed;inset:0;background:rgba(10,10,26,0.95);z-index:9500;display:flex;align-items:center;justify-content:center;padding:16px';
+          popup.innerHTML=`<div style="background:var(--surface);border-radius:12px;padding:20px;width:100%;max-width:320px;text-align:center;display:flex;flex-direction:column;gap:12px">
+            <div style="font-size:1.3rem">😔</div>
+            <div style="font-size:0.9rem;color:var(--text)">NFT юпика нет на кошельке</div>
+            <div style="font-size:0.8rem;color:var(--text-dim)">Купить:</div>
+            <div style="display:flex;gap:8px;justify-content:center">
+              <a href="https://t.me/nft_sender_yupland_bot" target="_blank" style="background:var(--surface2);color:#fff;text-decoration:none;border-radius:6px;padding:8px 14px;font-size:0.8rem">Сендер</a>
+              <a href="https://hotcraft.art/collection/darai.mintbase1.near" target="_blank" style="background:var(--surface2);color:#fff;text-decoration:none;border-radius:6px;padding:8px 14px;font-size:0.8rem">HotCraft</a>
+            </div>
+            <button id="nft-popup-close" style="background:var(--accent);border:none;color:#fff;border-radius:8px;padding:8px;cursor:pointer;font-size:0.85rem">Закрыть</button>
+          </div>`;
+          document.body.appendChild(popup);
+          popup.querySelector('#nft-popup-close').addEventListener('click',()=>popup.remove());
+          popup.addEventListener('click',e=>{if(e.target===popup)popup.remove()});
+          nftBtn.disabled=false;nftBtn.textContent='Забрать';
+          return;
+        }
+        // NFT есть — начисляем
+        this.currency.add(10);
+        localStorage.setItem(nftClaimKey,todayKey);
+        if(window._syncToDB)window._syncToDB();
+        this.toast('+10🪙 Настоящий юпик!');
+        this._renderAchievements();
+      }catch(e){
+        nftBtn.disabled=false;nftBtn.textContent='Забрать';
+        this.toast('Ошибка проверки NFT');
+      }
     });
   }
   _checkAchievementPopup(){

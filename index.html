@@ -905,7 +905,7 @@ class UI {
 
     let h='<div class="achievements">';
 
-    // Ежедневная награда
+    // 1. Ежедневная награда
     h+=`<h3 class="section-title">Ежедневная награда</h3>
     <div class="ach-item" style="flex-direction:column;align-items:flex-start;gap:6px">
       <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
@@ -925,9 +925,7 @@ class UI {
       </div>
     </div>`;
 
-    if(col.length){h+='<h3 class="section-title">Собранные</h3>';col.forEach(t=>{h+=`<div class="ach-item collected"><span class="ach-tile tile-${t}">${t}</span><span class="ach-label">Плитка ${t}</span><span class="ach-status">✓ Получено</span></div>`})}
-
-    // NFT награда "Настоящий юпик"
+    // 2. NFT награда
     const nftClaimKey='nftYupikClaim__'+(localStorage.getItem('nearAccountId')||'');
     const nftLastClaim=localStorage.getItem(nftClaimKey)||'';
     const nftClaimed=nftLastClaim===todayKey;
@@ -936,9 +934,30 @@ class UI {
     <span class="ach-label">Настоящий юпик · +10<img src="https://i.ibb.co/JwRdhbbJ/6-4x.png" style="width:1em;height:1em;border-radius:50%;vertical-align:middle;object-fit:cover;display:inline">/день</span>
     <span id="nft-reward-status">${nftClaimed?'<span class="ach-status">Получено</span>':'<button class="btn-claim" id="btn-nft-claim">Забрать</button>'}</span>
     </div>`;
+
+    // 3. Активная цель
     h+=`<h3 class="section-title">Активная цель</h3><div class="ach-item"><span class="ach-tile tile-${goal}">${goal}</span><span class="ach-label">Плитка ${goal} → +${this.achievements.getReward(goal)}<img src="https://i.ibb.co/JwRdhbbJ/6-4x.png" style="width:1em;height:1em;border-radius:50%;vertical-align:middle;object-fit:cover;display:inline"></span>${pending?`<button class="btn-claim pulse" id="btn-claim">Забрать</button>`:'<span class="ach-status">Ещё не достигнута</span>'}</div>`;
+
+    // 4. Следующая цель
     const ng=goal*2;if(max<ng)h+=`<h3 class="section-title">Следующая</h3><div class="ach-item"><span class="ach-tile tile-${ng}">${ng}</span><span class="ach-label">Плитка ${ng} → +${this.achievements.getReward(ng)}<img src="https://i.ibb.co/JwRdhbbJ/6-4x.png" style="width:1em;height:1em;border-radius:50%;vertical-align:middle;object-fit:cover;display:inline"></span><span class="ach-status">Следующая</span></div>`;
+
+    // 5. Собранные — сворачиваемый список
+    if(col.length){
+      h+=`<h3 class="section-title" style="cursor:pointer;user-select:none" id="collected-toggle">Собранные (${col.length}) ▸</h3>
+      <div id="collected-list" style="display:none">`;
+      col.forEach(t=>{h+=`<div class="ach-item collected"><span class="ach-tile tile-${t}">${t}</span><span class="ach-label">Плитка ${t}</span><span class="ach-status">✓ Получено</span></div>`});
+      h+=`</div>`;
+    }
+
     h+='</div>';el.innerHTML=h;
+
+    // Обработчик сворачивания
+    const toggle=document.getElementById('collected-toggle');
+    if(toggle)toggle.addEventListener('click',()=>{
+      const list=document.getElementById('collected-list');
+      if(list.style.display==='none'){list.style.display='flex';list.style.flexDirection='column';list.style.gap='8px';toggle.textContent=`Собранные (${col.length}) ▾`}
+      else{list.style.display='none';toggle.textContent=`Собранные (${col.length}) ▸`}
+    });
 
     const cb=document.getElementById('btn-claim');
     if(cb)cb.addEventListener('click',()=>{const r=this.achievements.claim(this.currency);this.toast(`+${r}<img src="https://i.ibb.co/JwRdhbbJ/6-4x.png" style="width:1em;height:1em;border-radius:50%;vertical-align:middle;object-fit:cover;display:inline"> за достижение!`);this._renderAchievements()});

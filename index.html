@@ -930,7 +930,7 @@ class UI {
     const nftLastClaim=localStorage.getItem(nftClaimKey)||'';
     const nftClaimed=nftLastClaim===todayKey;
     h+=`<h3 class="section-title">NFT награда</h3>
-    <div class="ach-item"><span class="ach-tile" style="background:#4a148c;font-size:0.65rem">NFT</span>
+    <div class="ach-item"><span class="ach-tile" style="background:transparent;padding:0"><img src="https://i.ibb.co/zWW3tNyq/315fe88b3095d1bc1506d90ff436ccb30a7bbae1489c0e2628f6a3def9c6fb29-jpeg.webp" style="width:44px;height:44px;border-radius:6px;object-fit:cover"></span>
     <span class="ach-label">Настоящий юпик · +10<img src="https://i.ibb.co/JwRdhbbJ/6-4x.png" style="width:1em;height:1em;border-radius:50%;vertical-align:middle;object-fit:cover;display:inline">/день</span>
     <span id="nft-reward-status">${nftClaimed?'<span class="ach-status">Получено</span>':'<button class="btn-claim" id="btn-nft-claim">Забрать</button>'}</span>
     </div>`;

@@ -14,8 +14,11 @@ supabase/schema.sql
 Для Vercel деплоя:
 - Открой **Vercel Dashboard → Project → Settings → Environment Variables**
 - Добавь:
-  - `SUPABASE_URL` = `https://egchnyodvvewcmkucijx.supabase.co`
-  - `SUPABASE_ANON_KEY` = `eyJhbGci...` (anon public key)
+  - `SUPABASE_URL` = URL из Supabase Dashboard → Settings → API
+  - `SUPABASE_ANON_KEY` = anon public key из Supabase Dashboard → Settings → API
+  - `SUPABASE_SERVICE_ROLE_KEY` = service_role key (для cron)
+  - `SENDLER_API_KEY` = API ключ sendler.xyz
+  - `CRON_SECRET` = любая случайная строка
 
 ## 3. Архивирование турниров
 

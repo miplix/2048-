@@ -2,7 +2,7 @@
 // Запускается каждое воскресенье в 20:00 UTC = 00:00 Тбилиси (UTC+4)
 // Расписание задаётся в vercel.json
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://egchnyodvvewcmkucijx.supabase.co';
+const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 async function supabase(path, method, body) {

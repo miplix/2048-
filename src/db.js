@@ -1,8 +1,8 @@
-// db.js — Supabase клиент и все операции с БД
-// anon ключ безопасен для фронтенда — защита через RLS политики в Supabase
+// db.js — Supabase клиент (ключи в env переменных Vercel, не в коде)
+// Этот файл — модульная версия для Vercel, не используется в index.html
 
-const SUPABASE_URL = 'https://egchnyodvvewcmkucijx.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVnY2hueW9kdnZld2Nta3VjaWp4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQzNDg0NjcsImV4cCI6MjA4OTkyNDQ2N30.cP4tiZzHpuNbCHnW1dmwDoee0fU2F-Ksve6-kA29irQ';
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 
 // Получить понедельник текущей недели в формате YYYY-MM-DD
 function getWeekStart() {

@@ -1111,211 +1111,147 @@ class UI {
 }
 
 // =============================================
-// Supabase DB
+// Supabase DB (через серверный proxy — ключи не в клиентском коде)
 // =============================================
-const SUPABASE_URL='https://egchnyodvvewcmkucijx.supabase.co';
-const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVnY2hueW9kdnZld2Nta3VjaWp4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQzNDg0NjcsImV4cCI6MjA4OTkyNDQ2N30.cP4tiZzHpuNbCHnW1dmwDoee0fU2F-Ksve6-kA29irQ';
 
 function getWeekStart(){const n=new Date(),d=n.getDay(),diff=d===0?-6:1-d,m=new Date(n);m.setDate(n.getDate()+diff);return m.toISOString().split('T')[0]}
 
 class DB {
-  constructor(){this._ready=false;this._client=null;this._load()}
-  async _load(){
-    await new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';s.onload=res;s.onerror=rej;document.head.appendChild(s)});
-    this._client=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
-    this._ready=true;
+  constructor(){this._ready=true}
+  async _req(path,method,body){
+    const resp=await fetch('/api/db-proxy',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({path,method:method||'GET',body})
+    });
+    if(!resp.ok){const e=await resp.text();throw new Error(e)}
+    const text=await resp.text();
+    try{return JSON.parse(text)}catch{return null}
   }
-  async _wait(){if(this._ready)return;await new Promise(r=>{const t=setInterval(()=>{if(this._ready){clearInterval(t);r()}},50)})}
+  // Хелперы для построения query string
+  _qs(table,filters){let p=table;const parts=[];for(const[k,v]of Object.entries(filters||{}))parts.push(`${k}=${v}`);if(parts.length)p+='?'+parts.join('&');return p}
+  async _select(table,columns,filters){return await this._req(this._qs(table,{select:columns,...filters}),'GET')||[]}
+  async _insert(table,data){return await this._req(table,'POST',data)}
+  async _update(table,data,filters){return await this._req(this._qs(table,filters),'PATCH',data)}
+  async _upsert(table,data,onConflict){return await this._req(table+'?on_conflict='+onConflict,'POST',data)}
+  async _delete(table,filters){return await this._req(this._qs(table,filters),'DELETE')}
   async getOrCreatePlayer(accountId,referredBy){
-    await this._wait();
-    const{data:ex}=await this._client.from('players').select('*').eq('nickname',accountId).maybeSingle();
-    if(ex){await this._client.from('players').update({last_seen_at:new Date().toISOString()}).eq('id',ex.id);return ex}
+    const rows=await this._req(`players?nickname=eq.${encodeURIComponent(accountId)}&select=*&limit=1`,'GET');
+    const ex=rows&&rows[0];
+    if(ex){await this._req(`players?id=eq.${ex.id}`,'PATCH',{last_seen_at:new Date().toISOString()});return ex}
     const ref=referredBy||'miplix.tg';
-    const{data:cr,error}=await this._client.from('players').insert({nickname:accountId,referred_by:ref}).select().single();
-    if(error)throw error;
-    return cr;
+    const cr=await this._req('players','POST',{nickname:accountId,referred_by:ref});
+    if(!cr||!cr[0])throw new Error('insert failed');
+    return cr[0];
   }
   async savePlayer(id,{coins,bestScore,maxTile,upgrades,achievements,lives,livesResetDate,livesBought,gameState}){
-    await this._wait();
     const upd={coins,best_score:bestScore,max_tile:maxTile,upgrades,achievements,last_seen_at:new Date().toISOString()};
     if(typeof lives==='number')upd.lives=lives;
     if(livesResetDate!==undefined)upd.lives_reset_date=livesResetDate;
     if(typeof livesBought==='number')upd.lives_bought=livesBought;
     if(gameState!==undefined)upd.game_state=gameState;
-    await this._client.from('players').update(upd).eq('id',id);
+    await this._req(`players?id=eq.${id}`,'PATCH',upd);
   }
   async submitScore(playerId,nickname,score,maxTile){
-    await this._wait();
-    const{data:at}=await this._client.from('leaderboard_alltime').select('best_score').eq('player_id',playerId).maybeSingle();
-    if(!at||score>at.best_score)await this._client.from('leaderboard_alltime').upsert({player_id:playerId,nickname,best_score:score,max_tile:maxTile,updated_at:new Date().toISOString()},{onConflict:'player_id'});
+    const at=await this._req(`leaderboard_alltime?player_id=eq.${playerId}&select=best_score&limit=1`,'GET');
+    if(!at||!at[0]||score>(at[0]?.best_score||0))
+      await this._req('leaderboard_alltime?on_conflict=player_id','POST',{player_id:playerId,nickname,best_score:score,max_tile:maxTile,updated_at:new Date().toISOString()});
     const ws=getWeekStart();
-    const{data:wk}=await this._client.from('leaderboard_weekly').select('best_score').eq('player_id',playerId).eq('week_start',ws).maybeSingle();
-    if(!wk||score>wk.best_score)await this._client.from('leaderboard_weekly').upsert({player_id:playerId,nickname,best_score:score,max_tile:maxTile,week_start:ws,updated_at:new Date().toISOString()},{onConflict:'player_id, week_start'});
+    const wk=await this._req(`leaderboard_weekly?player_id=eq.${playerId}&week_start=eq.${ws}&select=best_score&limit=1`,'GET');
+    if(!wk||!wk[0]||score>(wk[0]?.best_score||0))
+      await this._req('leaderboard_weekly?on_conflict=player_id,week_start','POST',{player_id:playerId,nickname,best_score:score,max_tile:maxTile,week_start:ws,updated_at:new Date().toISOString()});
   }
   async getAlltimeLeaderboard(limit=50){
-    await this._wait();
-    const{data}=await this._client.from('leaderboard_alltime').select('nickname,best_score,max_tile').order('best_score',{ascending:false}).limit(limit);
-    return data||[];
+    return await this._req(`leaderboard_alltime?select=nickname,best_score,max_tile&order=best_score.desc&limit=${limit}`,'GET')||[];
   }
   async getWeeklyLeaderboard(limit=50){
-    await this._wait();
-    const{data}=await this._client.from('leaderboard_weekly').select('nickname,best_score,max_tile').eq('week_start',getWeekStart()).order('best_score',{ascending:false}).limit(limit);
-    return data||[];
+    return await this._req(`leaderboard_weekly?select=nickname,best_score,max_tile&week_start=eq.${getWeekStart()}&order=best_score.desc&limit=${limit}`,'GET')||[];
   }
-
   async getLivesTournament(limit=50){
-    await this._wait();
-    const{data}=await this._client.from('tournament_lives').select('nickname,games_played').eq('week_start',getWeekStart()).order('games_played',{ascending:false}).limit(limit);
-    return data||[];
+    return await this._req(`tournament_lives?select=nickname,games_played&week_start=eq.${getWeekStart()}&order=games_played.desc&limit=${limit}`,'GET')||[];
   }
-
   async incrementGamesPlayed(playerId,nickname){
-    await this._wait();
     const ws=getWeekStart();
-    const{data:ex}=await this._client.from('tournament_lives').select('games_played').eq('player_id',playerId).eq('week_start',ws).maybeSingle();
-    const games=(ex?.games_played||0)+1;
-    await this._client.from('tournament_lives').upsert({player_id:playerId,nickname,games_played:games,week_start:ws,updated_at:new Date().toISOString()},{onConflict:'player_id, week_start'});
+    const ex=await this._req(`tournament_lives?player_id=eq.${playerId}&week_start=eq.${ws}&select=games_played&limit=1`,'GET');
+    const games=((ex&&ex[0]?.games_played)||0)+1;
+    await this._req('tournament_lives?on_conflict=player_id,week_start','POST',{player_id:playerId,nickname,games_played:games,week_start:ws,updated_at:new Date().toISOString()});
   }
-
   async getTournamentRewards(type){
-    await this._wait();
-    const{data}=await this._client.from('tournament_rewards').select('place,coins_reward').eq('tournament_type',type).order('place',{ascending:true});
-    return data||[];
+    return await this._req(`tournament_rewards?tournament_type=eq.${type}&select=place,coins_reward&order=place.asc`,'GET')||[];
   }
-
   async deleteTournamentRewards(type){
-    await this._wait();
-    await this._client.from('tournament_rewards').delete().eq('tournament_type',type);
+    await this._req(`tournament_rewards?tournament_type=eq.${type}`,'DELETE');
   }
-
-  // Ежедневная награда
+  async setTournamentReward(type,place,coins){
+    await this._req('tournament_rewards?on_conflict=tournament_type,place','POST',{tournament_type:type,place,coins_reward:coins});
+  }
   async markPlayedToday(playerId,todayKey){
-    await this._wait();
-    await this._client.from('players').update({daily_played_today:true,daily_last_played:todayKey}).eq('id',playerId);
+    await this._req(`players?id=eq.${playerId}`,'PATCH',{daily_played_today:true,daily_last_played:todayKey});
   }
   async claimDailyReward(playerId,streak,todayKey){
-    await this._wait();
     const coins=Math.min(10+((streak-1)*10),100);
-    const{data:p}=await this._client.from('players').select('coins').eq('id',playerId).single();
-    if(!p)return 0;
-    await this._client.from('players').update({
-      coins:(p.coins||0)+coins,
-      daily_streak:streak,
-      daily_last_claim:todayKey,
-      daily_played_today:false
-    }).eq('id',playerId);
+    const p=await this._req(`players?id=eq.${playerId}&select=coins&limit=1`,'GET');
+    if(!p||!p[0])return 0;
+    await this._req(`players?id=eq.${playerId}`,'PATCH',{coins:(p[0].coins||0)+coins,daily_streak:streak,daily_last_claim:todayKey,daily_played_today:false});
     return coins;
   }
-
-  // Рефералы
   async getReferrals(accountId){
-    await this._wait();
-    const{data}=await this._client.from('players').select('nickname,best_score,created_at').eq('referred_by',accountId).order('created_at',{ascending:false});
-    return data||[];
+    return await this._req(`players?referred_by=eq.${encodeURIComponent(accountId)}&select=nickname,best_score,created_at&order=created_at.desc`,'GET')||[];
   }
   async awardReferrer(referrerNickname,coins,giveLife){
-    await this._wait();
-    const{data:p}=await this._client.from('players').select('id,coins,lives').eq('nickname',referrerNickname).single();
-    if(!p)return;
-    const upd={coins:(p.coins||0)+coins};
-    if(giveLife)upd.lives=(p.lives||5)+1;
-    await this._client.from('players').update(upd).eq('id',p.id);
+    const p=await this._req(`players?nickname=eq.${encodeURIComponent(referrerNickname)}&select=id,coins,lives&limit=1`,'GET');
+    if(!p||!p[0])return;
+    const upd={coins:(p[0].coins||0)+coins};
+    if(giveLife)upd.lives=(p[0].lives||5)+1;
+    await this._req(`players?id=eq.${p[0].id}`,'PATCH',upd);
     if(coins>0||giveLife){
-      const msg=giveLife?`🎁 По твоей ссылке зарегистрировался новый игрок! +1 ❤️`:`🎁 Реферальный бонус: +${coins} монет!`;
-      await this._client.from('tournament_notifications').insert({player_id:p.id,message:msg,coins_awarded:coins});
+      const msg=giveLife?'🎁 По твоей ссылке зарегистрировался новый игрок! +1 ❤️':`🎁 Реферальный бонус: +${coins} монет!`;
+      await this._req('tournament_notifications','POST',{player_id:p[0].id,message:msg,coins_awarded:coins});
     }
   }
-
-  // Конфиг магазина
   async getShopConfig(){
-    await this._wait();
-    const{data}=await this._client.from('shop_config').select('*').order('pack_size',{ascending:true});
-    return data||[];
+    return await this._req('shop_config?select=*&order=pack_size.asc','GET')||[];
   }
   async saveShopConfig(packs){
-    await this._wait();
-    for(const p of packs){
-      await this._client.from('shop_config').upsert({pack_size:p.pack_size,price_darai:p.price_darai,discount_pct:p.discount_pct||0},{onConflict:'pack_size'});
-    }
+    for(const p of packs)await this._req('shop_config?on_conflict=pack_size','POST',{pack_size:p.pack_size,price_darai:p.price_darai,discount_pct:p.discount_pct||0});
   }
   async deleteShopPack(packSize){
-    await this._wait();
-    await this._client.from('shop_config').delete().eq('pack_size',packSize);
+    await this._req(`shop_config?pack_size=eq.${packSize}`,'DELETE');
   }
-
-  async setTournamentReward(type,place,coins){
-    await this._wait();
-    await this._client.from('tournament_rewards').upsert({tournament_type:type,place,coins_reward:coins},{onConflict:'tournament_type, place'});
-  }
-
   async getNotifications(playerId){
-    await this._wait();
-    const{data}=await this._client.from('tournament_notifications').select('*').eq('player_id',playerId).eq('seen',false).order('created_at',{ascending:false});
-    return data||[];
+    return await this._req(`tournament_notifications?player_id=eq.${playerId}&seen=eq.false&select=*&order=created_at.desc`,'GET')||[];
   }
-
   async markNotificationSeen(id){
-    await this._wait();
-    await this._client.from('tournament_notifications').update({seen:true}).eq('id',id);
+    await this._req(`tournament_notifications?id=eq.${id}`,'PATCH',{seen:true});
   }
-
   async finishTournament(type){
-    await this._wait();
     let topRows=[];
-    if(type==='score'){
-      const{data}=await this._client.from('leaderboard_weekly').select('player_id,nickname,best_score').gt('best_score',0).order('best_score',{ascending:false}).limit(10);
-      topRows=data||[];
-    } else {
-      const{data}=await this._client.from('tournament_lives').select('player_id,nickname,games_played').gt('games_played',0).order('games_played',{ascending:false}).limit(10);
-      topRows=data||[];
-    }
+    if(type==='score'){topRows=await this._req('leaderboard_weekly?select=player_id,nickname,best_score&best_score=gt.0&order=best_score.desc&limit=10','GET')||[]}
+    else{topRows=await this._req('tournament_lives?select=player_id,nickname,games_played&games_played=gt.0&order=games_played.desc&limit=10','GET')||[]}
     const rewards=await this.getTournamentRewards(type);
     let awarded=0;
     for(let i=0;i<topRows.length;i++){
       const rw=rewards.find(r=>r.place===i+1);
       if(!rw||rw.coins_reward<=0)continue;
       const row=topRows[i];
-      // Проверяем что уведомление ещё не было создано (защита от двойного начисления)
-      const{data:existing}=await this._client.from('tournament_notifications')
-        .select('id').eq('player_id',row.player_id)
-        .ilike('message',`%Турнир завершён%${i+1} место%`)
-        .gte('created_at',new Date(Date.now()-3600000).toISOString()) // за последний час
-        .maybeSingle();
-      if(existing)continue; // уже начислено
-      const{data:p}=await this._client.from('players').select('coins').eq('id',row.player_id).single();
-      if(p)await this._client.from('players').update({coins:(p.coins||0)+rw.coins_reward}).eq('id',row.player_id);
-      await this._client.from('tournament_notifications').insert({
-        player_id:row.player_id,
-        message:`🏆 Турнир завершён! Ты занял ${i+1} место и получил +${rw.coins_reward} монет!`,
-        coins_awarded:rw.coins_reward
-      });
+      const hourAgo=new Date(Date.now()-3600000).toISOString();
+      const existing=await this._req(`tournament_notifications?player_id=eq.${row.player_id}&message=ilike.*${i+1} место*&created_at=gte.${hourAgo}&limit=1`,'GET');
+      if(existing&&existing.length>0)continue;
+      const p=await this._req(`players?id=eq.${row.player_id}&select=coins&limit=1`,'GET');
+      if(p&&p[0])await this._req(`players?id=eq.${row.player_id}`,'PATCH',{coins:(p[0].coins||0)+rw.coins_reward});
+      await this._req('tournament_notifications','POST',{player_id:row.player_id,message:`🏆 Турнир завершён! Ты занял ${i+1} место и получил +${rw.coins_reward} монет!`,coins_awarded:rw.coins_reward});
       awarded++;
     }
-    // Сброс: обнуляем значения всех участников
-    if(type==='score'){
-      await this._client.from('leaderboard_weekly').update({best_score:0,max_tile:0}).gt('best_score',0);
-    } else {
-      await this._client.from('tournament_lives').update({games_played:0}).gt('games_played',0);
-    }
+    if(type==='score'){await this._req('leaderboard_weekly?best_score=gt.0','PATCH',{best_score:0,max_tile:0})}
+    else{await this._req('tournament_lives?games_played=gt.0','PATCH',{games_played:0})}
     return awarded;
   }
-
-  // Проверить что tx_hash ещё не использован
   async isTxUsed(txHash){
-    await this._wait();
-    const{data}=await this._client.from('purchases').select('id').eq('tx_hash',txHash).maybeSingle();
-    return!!data;
+    const d=await this._req(`purchases?tx_hash=eq.${encodeURIComponent(txHash)}&select=id&limit=1`,'GET');
+    return d&&d.length>0;
   }
-
-  // Записать покупку (UNIQUE на tx_hash защищает от дублей)
   async recordPurchase(playerId,accountId,txHash,livesBought,amountDarai){
-    await this._wait();
-    const{error}=await this._client.from('purchases').insert({
-      player_id:playerId,account_id:accountId,
-      tx_hash:txHash,lives_bought:livesBought,
-      amount_darai:amountDarai,status:'confirmed'
-    });
-    if(error)throw error;
+    await this._req('purchases','POST',{player_id:playerId,account_id:accountId,tx_hash:txHash,lives_bought:livesBought,amount_darai:amountDarai,status:'confirmed'});
   }
 }
 
